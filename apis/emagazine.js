@@ -1,9 +1,31 @@
 const router = require('express').Router()
 const AWS = require('aws-sdk')
 require('dotenv').config()
-const s3 = new AWS.S3()
-module.exports = (pool) => {
+const { Storage } = require('@google-cloud/storage');
 
+const projectId = process.env.PROJECT_ID; 
+const storage = new Storage({
+    keyFilename:"./key.json"
+});  // Create a new Google Cloud Storage instance
+const bucketName = process.env.BUCKET;
+const bucket = storage.bucket(bucketName)
+
+module.exports = (pool) => {
+    router.get('/image_check', async (req,res)=>{
+        try{
+                console.log("API called");
+                
+                const signedUrl =await  bucket.file("images/Gnana_Amirtham.png").getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                })
+                res.send(signedUrl[0]);
+
+        }
+        catch(err){
+            return {"error":err}
+        }
+    })
     router.get('/magazine-yearwise', async (req, res) => {
         try {
             const [results] = await pool.query(`
@@ -20,24 +42,37 @@ module.exports = (pool) => {
             `);
     
             // Generate signed URLs for images
-            const signedResults = results.map(e => {
-                const signedUrl = s3.getSignedUrl('getObject', {
-                    Bucket: process.env.BUCKET,  // S3 bucket name
-                    Key: e.img,                  // S3 key for the image
-                    Expires: 60 * 60             // 1 hour expiration
-                });
-                return {
-                    ...e,  // Spread the existing data
-                    imgUrl: signedUrl             // Add signed URL to the result
-                };
-            });
+            const signedResults = await Promise.all(results.map(async (e) => {
+                try {
+                    const signedUrl = await bucket.file(e.img).getSignedUrl({
+                        action: 'read',
+                        expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                    });
     
-            res.send(signedResults);
+                    return {
+                        ...e,  // Spread the existing data
+                        imgUrl: signedUrl[0]  // Add signed URL to the result
+                    };
+                } catch (err) {
+                    console.error('Error generating signed URL for', e.img, err);
+                    return null;  // Return null if error occurs while generating signed URL
+                }
+            }));
+    
+            // Filter out null values (in case there were errors)
+            const finalResults = signedResults.filter(result => result !== null);
+    
+            res.send(finalResults);
+    
         } catch (err) {
-            res.send({ error: err });
+            console.error('Error fetching magazine data:', err);
+            res.status(500).send({ error: err.message });
         }
     });
     
+    
+
+
     router.get('/magazine-monthwise', async (req, res) => {
         try {
             const [results] = await pool.query(`
@@ -45,26 +80,35 @@ module.exports = (pool) => {
                 FROM \`Jeevaa-dev\`.emagazine
                 WHERE year = ?`, [req.query.year]);
     
-            // Generate signed URLs for images
-            const signedResults = results.map(e => {
-                const signedUrl = s3.getSignedUrl('getObject', {
-                    Bucket: process.env.BUCKET,  // S3 bucket name
-                    Key: e.img,                  // S3 key for the image
-                    Expires: 60 * 60             // 1 hour expiration
-                });
-                return {
-                    ...e,  // Spread the existing data
-                    imgUrl: signedUrl             // Add signed URL to the result
-                };
-            });
+            const signedResults = await Promise.all(results.map(async (e) => {
+                const file = bucket.file(e.img); 
     
-            res.send(signedResults);
+                // Check if file exists before generating signed URL
+                const exists = await file.exists();
+                if (!exists[0]) {
+                    console.error(`File ${e.img} does not exist in the bucket.`);
+                    return null;
+                }
+    
+                const [signedUrl] = await file.getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 360 * 60 * 1000  // 6 hour expiration
+                });
+    
+                return {
+                    ...e,
+                    imgUrl: signedUrl  // Add signed URL to the result
+                };
+            }));
+    
+            res.send(signedResults.filter(result => result !== null));  // Filter out null values
+    
         } catch (err) {
-            res.send({ error: err });
+            res.status(500).send({ error: err.message });
         }
     });
     
-    
+    // Route to get magazine details by year and month
     router.get("/magazine-details", async (req, res) => {
         const { year, month } = req.query;
     
@@ -73,22 +117,22 @@ module.exports = (pool) => {
             return res.status(400).json({ error: "Missing required parameters: year and month" });
         }
     
-        const query = 'SELECT * FROM `Jeeva-dev`.emagazine WHERE year = ? AND month = ?';
+        const query = 'SELECT * FROM `Jeevaa-dev`.emagazine WHERE year = ? AND month = ?';
         try {
             const [results] = await pool.query(query, [year, month]);
     
             // Generate signed URLs for images
-            const signedResults = results.map(e => {
-                const signedUrl = s3.getSignedUrl('getObject', {
-                    Bucket: process.env.BUCKET,  // S3 bucket name
-                    Key: e.img,                  // S3 key for the image
-                    Expires: 60 * 60             // 1 hour expiration
+            const signedResults = await Promise.all(results.map(async (e) => {
+                const signedUrl = await bucket.file(e.img).getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
                 });
+    
                 return {
                     ...e,  // Spread the existing data
-                    imgUrl: signedUrl             // Add signed URL to the result
+                    imgUrl: signedUrl[0]  // Add signed URL to the result
                 };
-            });
+            }));
     
             res.send(signedResults);
         } catch (err) {
@@ -97,8 +141,8 @@ module.exports = (pool) => {
         }
     });
     
-
-
+    
+    // Route for getting next/previous magazine details
     router.get("/audio-prev-nxt-details", async (req, res) => {
         try {
             const query = `
@@ -112,27 +156,28 @@ module.exports = (pool) => {
                 WHERE (month - 1 = (SELECT month FROM \`Jeevaa-dev\`.emagazine WHERE id = ?)) 
                 AND (year = (SELECT year FROM \`Jeevaa-dev\`.emagazine WHERE id = ?))) AS b
             `;
-            
+    
             const [results] = await pool.query(query, [req.query.bid, req.query.bid, req.query.bid, req.query.bid]);
     
             // Generate signed URLs for each image
-            const signedResults = results.map(e => {
-                const signedUrl = s3.getSignedUrl('getObject', {
-                    Bucket: process.env.BUCKET,  // Use your S3 bucket name
-                    Key: e.img,                  // S3 key for the image
-                    Expires: 60 * 60             // 1 hour expiration
+            const signedResults = await Promise.all(results.map(async (e) => {
+                const signedUrl = await bucket.file(e.img).getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
                 });
+    
                 return {
-                    ...e,  // Spread the existing data
-                    imgUrl: signedUrl             // Add signed URL to the result
+                    ...e,
+                    imgUrl: signedUrl[0]  // Add signed URL to the result
                 };
-            });
+            }));
     
             res.send(signedResults);
         } catch (err) {
             res.status(500).send({ error: err.message });
         }
     });
+    
     
 
     router.get('/audiofile', async (req, res) => {
@@ -143,7 +188,7 @@ module.exports = (pool) => {
                 SELECT 
                     CASE WHEN exp_dt > ? THEN plan ELSE 'basic' 
                     END AS plan 
-                FROM \`Jeeva-dev\`.users
+                FROM \`Jeevaa-dev\`.users
                 WHERE id = ?`;
     
             const [planResult] = await pool.query(plan_query, [today, req.query.uid]);
@@ -151,47 +196,56 @@ module.exports = (pool) => {
     
             let query = `
                 SELECT audioFiles 
-                FROM \`Jeeva-dev\`.emagazine 
+                FROM \`Jeevaa-dev\`.emagazine 
                 WHERE id = ?`;
             const [results] = await pool.query(query, [req.query.bid]);
     
-            res.send(plan === 'basic' ? results.map((e, i) => {
-                if (i === 0) {
-                    return {
-                        title: e.title,
-                        audio: s3.getSignedUrl('getObject', {
-                            Bucket: process.env.S3_BUCKET,
-                            Key: e.audioFiles,
-                            Expires: 60 * 60
-                        }),
-                        transcript: e.transcript || ''
-                    };
-                } else {
+            // Generate signed URLs for audio files
+            const signedResults = await Promise.all(results.map(async (e, i) => {
+                const file = bucket.file(e.audioFiles);
+    
+                // Check if the file exists in Google Cloud Storage
+                const exists = await file.exists();
+                if (!exists[0]) {
+                    console.error(`File ${e.audioFiles} does not exist in the bucket.`);
                     return {
                         title: e.title,
                         audio: "",
-                        transcript: ""
+                        transcript: e.transcript || ""
                     };
                 }
-            }) 
-            : 
-            results.map((e) => {
-                return {
-                    title: e.title,
-                    audio: s3.getSignedUrl('getObject', {
-                        Bucket: process.env.S3_BUCKET,
-                        Key: e.audioFiles,
-                        Expires: 60 * 60
-                    }),
-                    transcript: e.transcript || ''
-                }
-            }
-        ))
     
+                // Generate a signed URL for the audio file
+                const [signedUrl] = await file.getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                });
+    
+                if (plan === 'basic' && i === 0) {
+                    // For basic plan, only allow the first file to have audio URL
+                    return {
+                        title: e.title,
+                        audio: signedUrl,
+                        transcript: e.transcript || ''
+                    };
+                } else {
+                    // For other plans, allow all audio files
+                    return {
+                        title: e.title,
+                        audio: signedUrl,
+                        transcript: e.transcript || ''
+                    };
+                }
+            }));
+    
+            res.send(signedResults);
         } catch (err) {
+            console.error("Error fetching audio file data:", err);
             res.status(500).send({ error: err.message });
         }
     });
+    
+    
     
     router.post("/payment-success", async (req, res) => {
         const { razorpay_payment_id, plan, amount } = req.body;
@@ -216,31 +270,64 @@ module.exports = (pool) => {
     
     /** APIs to buy book hardcopies */
        
-    router.get('/books', async (req, res)=>{
-        try{
-            console.log("inside books api");
-            
-            const query = `select id, genre, title, subtitle, shortdesc, org_price, discount, disc_price, img from \`Jeeva-dev\`.book`
-            const [results] = await pool.query(query)
-            res.send(results)
+    router.get('/books', async (req, res) => {
+        try {
+            console.log("Inside books API");
+    
+            // Query to fetch the books
+            const query = `SELECT id, genre, title, subtitle, shortdesc, org_price, discount, disc_price, img FROM \`Jeeva-dev\`.book`;
+            const [results] = await pool.query(query);
+    
+            // Map over the results to generate signed URLs for the images
+            const signedResults = await Promise.all(results.map(async (book) => {
+                const signedUrl = await bucket.file(book.img).getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                });
+    
+                book.imgUrl = signedUrl[0];  // Set the signed URL to the result object
+                return book;  // Return the updated book object with the signed URL
+            }));
+    
+            res.send(signedResults);
+    
+        } catch (err) {
+            res.status(500).send({ error: err.message });
         }
-        catch (err){
-            res.send({ error: err })
-        }
-    })
+    });
+    
 
-    router.get('/book-info', async(req,res)=>{
-        try{
-            const query = `select id, availability,author , genre, title, shortdesc, disc_price, img, description, additionalInfo, favorite from \`Jeeva-dev\`.book
-                            where id = ${req.query.id}`
-            const [results] = await pool.query(query)
-            res.send(results)
+    router.get('/book-info', async (req, res) => {
+        try {
+            const query = `
+                SELECT id, availability, author, genre, title, shortdesc, disc_price, img, description, additionalInfo, favorite 
+                FROM \`Jeeva-dev\`.book
+                WHERE id = ${req.query.id}`;
+    
+            const [results] = await pool.query(query);
+    
+            if (results.length > 0) {
+                const book = results[0]; // Get the first (and only) result
+    
+                const signedUrl = await bucket.file(book.img).getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                });
+    
+                book.imgUrl = signedUrl[0];  // Set the signed URL to the result object
+    
+                res.send(book);
+            } else {
+                res.status(404).send({ error: "Book not found" });
+            }
+    
+        } catch (err) {
+            res.status(500).send({ error: err.message });
         }
-        catch (err){
-            res.send({ error: err })
-        }
-    })
-
+    });
+    
+    
+    
 
     return router
 }
