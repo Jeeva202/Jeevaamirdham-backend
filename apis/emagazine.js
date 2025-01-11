@@ -269,62 +269,7 @@ module.exports = (pool) => {
 
     
     /** APIs to buy book hardcopies */
-       
-    router.get('/books', async (req, res) => {
-        try {
-            console.log("Inside books API");
-    
-            // Query to fetch the books
-            const query = `SELECT id, genre, title, subtitle, shortdesc, org_price, discount, disc_price, img FROM \`Jeeva-dev\`.book`;
-            const [results] = await pool.query(query);
-    
-            // Map over the results to generate signed URLs for the images
-            const signedResults = await Promise.all(results.map(async (book) => {
-                const signedUrl = await bucket.file(book.img).getSignedUrl({
-                    action: 'read',
-                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
-                });
-    
-                book.imgUrl = signedUrl[0];  // Set the signed URL to the result object
-                return book;  // Return the updated book object with the signed URL
-            }));
-    
-            res.send(signedResults);
-    
-        } catch (err) {
-            res.status(500).send({ error: err.message });
-        }
-    });
-    
 
-    router.get('/book-info', async (req, res) => {
-        try {
-            const query = `
-                SELECT id, availability, author, genre, title, shortdesc, disc_price, img, description, additionalInfo, favorite 
-                FROM \`Jeeva-dev\`.book
-                WHERE id = ${req.query.id}`;
-    
-            const [results] = await pool.query(query);
-    
-            if (results.length > 0) {
-                const book = results[0]; // Get the first (and only) result
-    
-                const signedUrl = await bucket.file(book.img).getSignedUrl({
-                    action: 'read',
-                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
-                });
-    
-                book.imgUrl = signedUrl[0];  // Set the signed URL to the result object
-    
-                res.send(book);
-            } else {
-                res.status(404).send({ error: "Book not found" });
-            }
-    
-        } catch (err) {
-            res.status(500).send({ error: err.message });
-        }
-    });
     
     
     

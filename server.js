@@ -13,15 +13,14 @@ app.post('/check-user', async (req, res) => {
     console.log(req.body);
     
     const { email } = req.body;
-    
+
     console.log(email);
     
     try {
       const user = await pool.query(`select id, username from \`Jeeva-dev\`.users where email = ?`, [email]);
-      console.log("user", user[0].length);
-      
+      console.log("user", user);
       if (user[0].length !=0) {
-        return res.json({ userExists: true });
+        return res.json({ userExists: true, id:user[0][0].id });
       } else {
         return res.json({ userExists: false });
       }
@@ -125,6 +124,7 @@ app.post('/setPlan', async (req, res)=>{
 pool.getConnection().then(
     ()=>{
         app.use('/emagazine-page', require('./apis/emagazine')(pool));
+        app.use('/ebooks', require('./apis/ebook')(pool));
         app.listen(port, ()=>{console.log("connected to database")})
     }
 ).catch(err=>{
