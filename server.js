@@ -13,6 +13,7 @@ app.post('/check-user', async (req, res) => {
     console.log(req.body);
     
     const { email } = req.body;
+    
     console.log(email);
     
     try {
