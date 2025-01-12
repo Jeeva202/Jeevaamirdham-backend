@@ -124,6 +124,8 @@ app.post('/setPlan', async (req, res)=>{
 pool.getConnection().then(
     ()=>{
         app.use('/emagazine-page', require('./apis/emagazine')(pool));
+        app.use('/audio-page', require('./apis/audio')(pool));
+        app.use('/video-page', require('./apis/video')(pool));
         app.listen(port, ()=>{console.log("connected to database")})
     }
 ).catch(err=>{
