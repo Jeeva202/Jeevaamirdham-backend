@@ -111,29 +111,104 @@ module.exports = (pool) => {
     // Route to get magazine details by year and month
     router.get("/magazine-details", async (req, res) => {
         const { year, month } = req.query;
-    
+        console.log(year, month);
+        
         // Validate parameters
         if (!year || !month) {
             return res.status(400).json({ error: "Missing required parameters: year and month" });
         }
     
-        const query = 'SELECT * FROM `Jeevaa-dev`.emagazine WHERE year = ? AND month = ?';
+        const query = `SELECT title, author, shortDesc, description, img, category, created_dt, 'Jeeva Amirtham' as 'by' from emagazine WHERE year = ? AND month = ?`;
+        
         try {
-            const [results] = await pool.query(query, [year, month]);
-    
-            // Generate signed URLs for images
+            const [results] = await pool.query(query, [parseInt(year), parseInt(month)]);
+            
+            // Generate signed URLs for images and audio files
             const signedResults = await Promise.all(results.map(async (e) => {
-                const signedUrl = await bucket.file(e.img).getSignedUrl({
+                // Get signed URL for the image
+                const signedImgUrl = await bucket.file(e.img).getSignedUrl({
                     action: 'read',
                     expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
                 });
     
+ 
                 return {
-                    ...e,  // Spread the existing data
-                    imgUrl: signedUrl[0]  // Add signed URL to the result
+                    ...e,  // Retain the magazine data
+                    imgUrl: signedImgUrl[0],  // Add signed URL for the image
+                    // audio: signedAudioFiles  // Add the signed audio file URLs
+                };
+            }));
+            console.log(signedResults[0]);
+            
+            res.send(signedResults[0]);
+        } catch (err) {
+            console.error("Database error:", err);
+            res.status(500).send({ error: "Internal Server Error" });
+        }
+    });
+    
+    router.get('/other-magazine-details', async (req, res) => {
+        const { year, month } = req.query;
+        console.log(year, month);
+        
+        // Validate parameters
+        if (!year || !month) {
+            return res.status(400).json({ error: "Missing required parameters: year and month" });
+        }
+    
+        const currentDate = new Date(year, month - 1); // JavaScript months are 0-indexed
+        const magazines = [];
+    
+        // Function to get the month and year of the previous or next month
+        function getAdjacentMonth(currDate, offset) {
+            const newDate = new Date(currDate);
+            newDate.setMonth(currDate.getMonth() + offset);
+            return {
+                year: newDate.getFullYear(),
+                month: newDate.getMonth() + 1 // Adjust for 0-indexed months
+            };
+        }
+    
+        // Get 3 nearby magazines: 1, 2, and 3 months before or after
+        const monthOffsets = [-3, -2, -1, 1, 2, 3];  // Get magazines 3 months before, 2, 1, 1 month after, 2, 3 months after
+    
+        try {
+            const queryPromises = monthOffsets.map(async (offset) => {
+                const { year: adjYear, month: adjMonth } = getAdjacentMonth(currentDate, offset);
+                const query = `SELECT title, author, shortDesc, description, img, category, created_dt, 'Jeeva Amirtham' as 'by' 
+                               FROM emagazine 
+                               WHERE year = ? AND month = ?`;
+                
+                const [results] = await pool.query(query, [adjYear, adjMonth]);
+                return results;
+            });
+    
+            // Wait for all queries to complete
+            const resultArrays = await Promise.all(queryPromises);
+            
+            // Flatten the array of results
+            const allMagazines = resultArrays.flat();
+    
+            // Deduplicate and take the first 3
+            const uniqueMagazines = allMagazines.slice(0, 3);
+    
+            // Generate signed URLs for images and audio files
+            const signedResults = await Promise.all(uniqueMagazines.map(async (e) => {
+                // Get signed URL for the image
+                const signedImgUrl = await bucket.file(e.img).getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+                });
+    
+                // Return the updated result with signed image URL
+                return {
+                    ...e,  // Retain the magazine data
+                    imgUrl: signedImgUrl[0]  // Add signed URL for the image
                 };
             }));
     
+            console.log(signedResults);
+            
             res.send(signedResults);
         } catch (err) {
             console.error("Database error:", err);
@@ -142,22 +217,47 @@ module.exports = (pool) => {
     });
     
     
+    
+    router.get('/get-plan-amount', async (req, res) => {
+        try {
+            const { planName } = req.query;
+    
+            // Use parameterized queries to prevent SQL injection
+            const query = 'SELECT price FROM plans WHERE name = ? LIMIT 1';
+            console.log(query, planName);
+    
+            // Execute the query using pool.query
+            const [rows] = await pool.query(query, [planName]);
+    
+            // If no rows are returned, planName is invalid
+            if (rows.length === 0) {
+                return res.status(404).json({ error: 'Plan not found' });
+            }
+    
+            const price = rows[0].price;  // Access the price from the first row
+            return res.json({ price });
+        } catch (err) {
+            console.error("DB error:", err);
+            res.status(500).send({ error: "Internal Server Error occurred" });
+        }
+    });
+    
     // Route for getting next/previous magazine details
     router.get("/audio-prev-nxt-details", async (req, res) => {
         try {
-            const query = `
-                (SELECT img, title, 'prev' AS month  
-                FROM \`Jeevaa-dev\`.emagazine
-                WHERE (month + 1 = (SELECT month FROM \`Jeevaa-dev\`.emagazine WHERE id = ?)) 
-                AND (year = (SELECT year FROM \`Jeevaa-dev\`.emagazine WHERE id = ?))) AS a
-                UNION ALL
-                (SELECT img, title, 'nxt' AS month  
-                FROM \`Jeevaa-dev\`.emagazine
-                WHERE (month - 1 = (SELECT month FROM \`Jeevaa-dev\`.emagazine WHERE id = ?)) 
-                AND (year = (SELECT year FROM \`Jeevaa-dev\`.emagazine WHERE id = ?))) AS b
-            `;
+            const { year, selectedMonth } = req.query;  // year and selectedMonth as query params
     
-            const [results] = await pool.query(query, [req.query.bid, req.query.bid, req.query.bid, req.query.bid]);
+            // Query to get all magazines for the specified year excluding the selected month
+            const query = `
+                SELECT img, title, year, month
+                FROM \`Jeevaa-dev\`.emagazine
+                WHERE year = ?
+                AND month != ?  // Exclude the selected month
+                ORDER BY month
+            `;
+        
+            // Execute the query to fetch all magazines for the given year, excluding the selected month
+            const [results] = await pool.query(query, [year, selectedMonth]);
     
             // Generate signed URLs for each image
             const signedResults = await Promise.all(results.map(async (e) => {
@@ -171,7 +271,7 @@ module.exports = (pool) => {
                     imgUrl: signedUrl[0]  // Add signed URL to the result
                 };
             }));
-    
+        
             res.send(signedResults);
         } catch (err) {
             res.status(500).send({ error: err.message });
@@ -179,65 +279,82 @@ module.exports = (pool) => {
     });
     
     
+    
 
     router.get('/audiofile', async (req, res) => {
         try {
             const today = new Date().toISOString().slice(0, 10);
+            const { uid, year, month } = req.query;
     
+            // Fetch the user's plan
             const plan_query = `
                 SELECT 
-                    CASE WHEN exp_dt > ? THEN plan ELSE 'basic' 
+                    CASE WHEN expiry_dt > ? THEN plan ELSE 'basic' 
                     END AS plan 
-                FROM \`Jeevaa-dev\`.users
+                FROM users
                 WHERE id = ?`;
-    
-            const [planResult] = await pool.query(plan_query, [today, req.query.uid]);
+            
+            const [planResult] = await pool.query(plan_query, [today, uid]);
             const plan = planResult && planResult.length > 0 ? planResult[0].plan : 'basic';
     
+            // Query to fetch audio content for the given year and month
             let query = `
-                SELECT audioFiles 
-                FROM \`Jeevaa-dev\`.emagazine 
-                WHERE id = ?`;
-            const [results] = await pool.query(query, [req.query.bid]);
+                SELECT audio
+                FROM emagazine 
+                WHERE year = ? AND month = ?`;
+            
+            const [results] = await pool.query(query, [parseInt(year), parseInt(month)]);
+            
+            // Parse the audio JSON content
+            const audioContent = JSON.parse(results[0]["audio"]);
+            
+            // Map through each audio content
+            const signedResults = await Promise.all(audioContent.map(async (e, i) => {
     
-            // Generate signed URLs for audio files
-            const signedResults = await Promise.all(results.map(async (e, i) => {
-                const file = bucket.file(e.audioFiles);
+                const file = bucket.file(e.audioFile);
     
                 // Check if the file exists in Google Cloud Storage
                 const exists = await file.exists();
                 if (!exists[0]) {
-                    console.error(`File ${e.audioFiles} does not exist in the bucket.`);
+                    console.error(`File ${e.audioFile} does not exist in the bucket.`);
                     return {
                         title: e.title,
                         audio: "",
-                        transcript: e.transcript || ""
+                        transcript: e.pageContent || ""
                     };
                 }
     
-                // Generate a signed URL for the audio file
+                // Generate signed URL for the audio file
                 const [signedUrl] = await file.getSignedUrl({
                     action: 'read',
                     expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
                 });
     
+                // For basic plan, only allow the first item to have audio URL
                 if (plan === 'basic' && i === 0) {
-                    // For basic plan, only allow the first file to have audio URL
                     return {
-                        title: e.title,
+                        title: e.pageTitle,
                         audio: signedUrl,
-                        transcript: e.transcript || ''
+                        transcript: e.pageContent || ''
+                    };
+                } else if (plan === 'basic' && i > 0) {
+                    // For basic plan, return empty audio URL for subsequent items
+                    return {
+                        title: e.pageTitle,
+                        audio: "",
+                        transcript: ''
                     };
                 } else {
                     // For other plans, allow all audio files
                     return {
-                        title: e.title,
+                        title: e.pageTitle,
                         audio: signedUrl,
-                        transcript: e.transcript || ''
+                        transcript: e.pageContent || ''
                     };
                 }
             }));
     
+            // Send the result to the frontend
             res.send(signedResults);
         } catch (err) {
             console.error("Error fetching audio file data:", err);
@@ -247,14 +364,15 @@ module.exports = (pool) => {
     
     
     
+    
     router.post("/payment-success", async (req, res) => {
-        const { razorpay_payment_id, plan, amount } = req.body;
+        const { razorpay_payment_id, plan, amount, user_id } = req.body;
       
         try {
           // Save payment details to the database
           await db.query(
-            "INSERT INTO subscriptions (payment_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
-            [razorpay_payment_id, plan, amount, req.user.id, "active"] // Use user ID from session or token
+            "INSERT INTO subscriptions (transac_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
+            [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
           );
       
           res.status(200).json({ message: "Subscription updated successfully" });

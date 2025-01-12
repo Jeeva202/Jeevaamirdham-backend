@@ -92,9 +92,11 @@ app.post('/create-user', async (req, res) => {
 app.get('/getPlan', async (req,res)=>{
     try{
         const today = new Date().toISOString().slice(0, 10);
-        const query = `SELECT plan FROM \`Jeeva-dev\`.user_magazine_sales
-                        where u_id =? and exp_dt < ?`
-        const [results] = await pool.query(query, [req.params.id, today])
+        const query = `SELECT plan FROM users
+                        where id =? and expiry_dt > ?`
+        
+        const [results] = await pool.query(query, [req.query.id, today])
+
         res.send(results)
     }
     catch(err){
