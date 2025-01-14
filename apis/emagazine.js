@@ -13,7 +13,7 @@ const bucket = storage.bucket(bucketName)
 module.exports = (pool) => {
     router.get('/image_check', async (req,res)=>{
         try{
-                console.log("API called");
+                // console.log("API called");
                 
                 const signedUrl =await  bucket.file("images/Gnana_Amirtham.png").getSignedUrl({
                     action: 'read',
@@ -34,7 +34,7 @@ module.exports = (pool) => {
                         img,
                         year,
                         ROW_NUMBER() OVER (PARTITION BY year ORDER BY year) AS row_num
-                    FROM \`Jeevaa-dev\`.emagazine
+                    FROM emagazine
                 )
                 SELECT img, year
                 FROM RankedRows
@@ -77,7 +77,7 @@ module.exports = (pool) => {
         try {
             const [results] = await pool.query(`
                 SELECT img, month 
-                FROM \`Jeevaa-dev\`.emagazine
+                FROM emagazine
                 WHERE year = ?`, [req.query.year]);
     
             const signedResults = await Promise.all(results.map(async (e) => {
@@ -111,14 +111,25 @@ module.exports = (pool) => {
     // Route to get magazine details by year and month
     router.get("/magazine-details", async (req, res) => {
         const { year, month } = req.query;
-        console.log(year, month);
+        // console.log(year, month);
         
         // Validate parameters
         if (!year || !month) {
             return res.status(400).json({ error: "Missing required parameters: year and month" });
         }
     
-        const query = `SELECT title, author, shortDesc, description, img, category, created_dt, 'Jeeva Amirtham' as 'by' from emagazine WHERE year = ? AND month = ?`;
+        const query = `SELECT 
+    title, 
+    author, 
+    shortDesc, 
+    description, 
+    img, 
+    category,
+    details,
+   created_dt, 
+    'Jeeva Amirtham' as 'by' 
+FROM emagazine 
+WHERE year = ? AND month = ?;`;
         
         try {
             const [results] = await pool.query(query, [parseInt(year), parseInt(month)]);
@@ -138,7 +149,7 @@ module.exports = (pool) => {
                     // audio: signedAudioFiles  // Add the signed audio file URLs
                 };
             }));
-            console.log(signedResults[0]);
+            // console.log(signedResults[0]);
             
             res.send(signedResults[0]);
         } catch (err) {
@@ -149,7 +160,7 @@ module.exports = (pool) => {
     
     router.get('/other-magazine-details', async (req, res) => {
         const { year, month } = req.query;
-        console.log(year, month);
+        // console.log(year, month);
         
         // Validate parameters
         if (!year || !month) {
@@ -175,7 +186,7 @@ module.exports = (pool) => {
         try {
             const queryPromises = monthOffsets.map(async (offset) => {
                 const { year: adjYear, month: adjMonth } = getAdjacentMonth(currentDate, offset);
-                const query = `SELECT title, author, shortDesc, description, img, category, created_dt, 'Jeeva Amirtham' as 'by' 
+                const query = `SELECT title, author, shortDesc, description, img, category,created_dt, 'Jeeva Amirtham' as 'by' 
                                FROM emagazine 
                                WHERE year = ? AND month = ?`;
                 
@@ -207,7 +218,7 @@ module.exports = (pool) => {
                 };
             }));
     
-            console.log(signedResults);
+            // console.log(signedResults);
             
             res.send(signedResults);
         } catch (err) {
@@ -224,7 +235,7 @@ module.exports = (pool) => {
     
             // Use parameterized queries to prevent SQL injection
             const query = 'SELECT price FROM plans WHERE name = ? LIMIT 1';
-            console.log(query, planName);
+            // console.log(query, planName);
     
             // Execute the query using pool.query
             const [rows] = await pool.query(query, [planName]);
@@ -250,9 +261,9 @@ module.exports = (pool) => {
             // Query to get all magazines for the specified year excluding the selected month
             const query = `
                 SELECT img, title, year, month
-                FROM \`Jeevaa-dev\`.emagazine
+                FROM emagazine
                 WHERE year = ?
-                AND month != ?  // Exclude the selected month
+                AND month != ?  
                 ORDER BY month
             `;
         
@@ -281,6 +292,96 @@ module.exports = (pool) => {
     
     
 
+    // router.get('/audiofile', async (req, res) => {
+    //     try {
+    //         const today = new Date().toISOString().slice(0, 10);
+    //         const { uid, year, month } = req.query;
+    
+    //         // Fetch the user's plan
+    //         const plan_query = `
+    //             SELECT 
+    //                 CASE WHEN expiry_dt > ? THEN plan ELSE 'basic' 
+    //                 END AS plan 
+    //             FROM users
+    //             WHERE id = ?`;
+            
+    //         const [planResult] = await pool.query(plan_query, [today, uid]);
+    //         const plan = planResult && planResult.length > 0 ? planResult[0].plan : 'basic';
+    
+    //         // Query to fetch audio content for the given year and month
+    //         let query = `
+    //             SELECT audio
+    //             FROM emagazine 
+    //             WHERE year = ? AND month = ?`;
+            
+    //         const [results] = await pool.query(query, [parseInt(year), parseInt(month)]);
+            
+    //         // Parse the audio JSON content
+    //         const audioContent = JSON.parse(results[0]["audio"]);
+    //         console.log("audioContent",audioContent);
+            
+    //         // Map through each audio content
+    //         const signedResults = await Promise.all(audioContent.map(async (e, i) => {
+    
+    //             const file = bucket.file(e.audioFile);
+    //             const imgFile = bucket.file(e.pageImg)
+    //             // Check if the file exists in Google Cloud Storage
+    //             const exists = await file.exists();
+    //             if (!exists[0]) {
+    //                 console.error(`File ${e.audioFile} does not exist in the bucket.`);
+    //                 return {
+    //                     title: e.title,
+    //                     audio: "",
+    //                     transcript: "",
+    //                     img:""
+    //                 };
+    //             }
+    
+    //             // Generate signed URL for the audio file
+    //             const [signedUrl] = await file.getSignedUrl({
+    //                 action: 'read',
+    //                 expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+    //             });
+    //             const [signedImg] = await imgFile.getSignedUrl({
+    //                 action:'read',
+    //                 expires:Date.now() + 60*60*1000
+    //             })
+    //             // For basic plan, only allow the first item to have audio URL
+    //             if (plan === 'basic' && i === 0) {
+    //                 return {
+    //                     title: e.pageTitle,
+    //                     audio: signedUrl,
+    //                     transcript: e.pageContent || '',
+    //                     img:e.pageImg
+    //                 };
+    //             } else if (plan === 'basic' && i > 0) {
+    //                 // For basic plan, return empty audio URL for subsequent items
+    //                 return {
+    //                     title: e.pageTitle,
+    //                     audio: "",
+    //                     transcript: '',
+    //                     img:''
+    //                 };
+    //             } else {
+    //                 // For other plans, allow all audio files
+    //                 return {
+    //                     title: e.pageTitle,
+    //                     audio: signedUrl,
+    //                     transcript: e.pageContent || '',
+    //                     img:e.signedImg
+    //                 };
+    //             }
+    //         }));
+    
+    //         // Send the result to the frontend
+    //         res.send(signedResults);
+    //     } catch (err) {
+    //         console.error("Error fetching audio file data:", err);
+    //         res.status(500).send({ error: err.message });
+    //     }
+    // });
+    
+    
     router.get('/audiofile', async (req, res) => {
         try {
             const today = new Date().toISOString().slice(0, 10);
@@ -293,7 +394,7 @@ module.exports = (pool) => {
                     END AS plan 
                 FROM users
                 WHERE id = ?`;
-            
+    
             const [planResult] = await pool.query(plan_query, [today, uid]);
             const plan = planResult && planResult.length > 0 ? planResult[0].plan : 'basic';
     
@@ -302,26 +403,21 @@ module.exports = (pool) => {
                 SELECT audio
                 FROM emagazine 
                 WHERE year = ? AND month = ?`;
-            
+    
             const [results] = await pool.query(query, [parseInt(year), parseInt(month)]);
-            
+    
             // Parse the audio JSON content
             const audioContent = JSON.parse(results[0]["audio"]);
-            
-            // Map through each audio content
+            console.log(audioContent);
+    
             const signedResults = await Promise.all(audioContent.map(async (e, i) => {
-    
-                const file = bucket.file(e.audioFile);
-    
                 // Check if the file exists in Google Cloud Storage
+                const file = bucket.file(e.audioFile);
+                const imgFile = bucket.file(e.pageImg);
                 const exists = await file.exists();
+    
                 if (!exists[0]) {
                     console.error(`File ${e.audioFile} does not exist in the bucket.`);
-                    return {
-                        title: e.title,
-                        audio: "",
-                        transcript: e.pageContent || ""
-                    };
                 }
     
                 // Generate signed URL for the audio file
@@ -330,39 +426,60 @@ module.exports = (pool) => {
                     expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
                 });
     
-                // For basic plan, only allow the first item to have audio URL
-                if (plan === 'basic' && i === 0) {
-                    return {
-                        title: e.pageTitle,
-                        audio: signedUrl,
-                        transcript: e.pageContent || ''
-                    };
-                } else if (plan === 'basic' && i > 0) {
-                    // For basic plan, return empty audio URL for subsequent items
-                    return {
-                        title: e.pageTitle,
-                        audio: "",
-                        transcript: ''
-                    };
+                const [signedImg] = await imgFile.getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000
+                });
+    
+                if (plan === 'basic') {
+                    if (i === 0) {
+                        // For the first page, return audio and transcript if available, otherwise empty
+                        if (e.audioFile && e.pageContent) {
+                            return {
+                                title: e.pageTitle,
+                                audio: signedUrl,
+                                transcript: e.pageContent || '',
+                                img: signedImg
+                            };
+                        } else {
+                            // If the audio or transcript is missing, return empty strings
+                            return {
+                                title: e.pageTitle,
+                                audio: "",
+                                transcript: "",
+                                img: ""
+                            };
+                        }
+                    } else {
+                        // For all subsequent pages, return empty audio, transcript, and img
+                        return {
+                            title: e.pageTitle,
+                            audio: "",
+                            transcript: "",
+                            img: ""
+                        };
+                    }
                 } else {
-                    // For other plans, allow all audio files
+                    // For non-basic plans, return all available audio, transcript, and img
                     return {
                         title: e.pageTitle,
                         audio: signedUrl,
-                        transcript: e.pageContent || ''
+                        transcript: e.pageContent || '',
+                        img: signedImg
                     };
                 }
             }));
     
+            // Filter out null results (in case the audio file doesn't exist)
+            const filteredResults = signedResults.filter(result => result !== null);
+    
             // Send the result to the frontend
-            res.send(signedResults);
+            res.send(filteredResults);
         } catch (err) {
             console.error("Error fetching audio file data:", err);
             res.status(500).send({ error: err.message });
         }
     });
-    
-    
     
     
     router.post("/payment-success", async (req, res) => {

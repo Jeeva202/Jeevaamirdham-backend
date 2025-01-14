@@ -65,20 +65,24 @@ module.exports = (pool) => {
     
         if (cartDetails) {
             let data = JSON.parse(cartDetails); // Parse the string into an array
-    
+            console.log("data before removing item", data);
+            
             // Remove the item from the cart array
-            data = data.filter(item => item.book_id !== book_id);
-    
+            data = data.filter(item => {
+                console.log(`Checking: item.book_id = ${item.book_id}, book_id = ${book_id}`);
+                return item.book_id !== parseInt(book_id);
+            });
+            console.log("data after removing item", data);
             // Convert the updated array back to a JSON string
             const updatedCart = JSON.stringify(data);
     
             // Update the cart details in the database
-            await pool.query(`UPDATE \`Jeeva-dev\`.users SET cart_details = ? WHERE id = ?`, [updatedCart, userId]);
-    
+            await pool.query(`UPDATE users SET cart_details = ? WHERE id = ?`, [updatedCart, userId]);
+            const [new_data] = await pool.query(`select cart_details from users WHERE id = ?`, [userId]);
             // Send response with updated cart details
             res.json({
                 message: "Item removed from cart",
-                cart_details: data
+                cart_details: new_data[0]["cart_details"]
             });
         } else {
             res.status(404).json({ message: "Cart not found for user" });
@@ -190,6 +194,80 @@ module.exports = (pool) => {
         } catch (error) {
             console.error("Error updating cart:", error);
             res.status(500).json({ message: "Internal server error" });
+        }
+    });
+
+    // router.get('/get-book-amount', async (req, res)=>{
+    //     try{
+    //         let amount_query = `select `
+    //     }
+    //     catch(err){
+    //         console.error("Error updating cart:", error);
+    //         res.status(500).json({ message: "Internal server error" });
+    //     }
+    // })
+
+    router.post('/payment-success', async (req, res) => {
+        const { razorpay_payment_id, amount, user_id, userDetails, cartDetails } = req.body;
+    
+        if (!razorpay_payment_id || !amount || !user_id || !cartDetails || cartDetails.length === 0) {
+            return res.status(400).json({ error: "Missing required fields" });
+        }
+    
+        // Extract user details
+        const {
+            firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes
+        } = userDetails;
+    
+        // Create a full address string
+        const full_address = `${street} ${street2 ? street2 + ', ' : ''}${city}, ${state}, ${country}, ${zipcode}`;
+    
+        // Start database transaction
+        try {
+            await pool.beginTransaction();
+    
+            // Insert the transaction into the orders table for each book in the cart
+            for (const book of cartDetails) {
+                const { book_id, quantity } = book;
+    
+                // Insert the order with user details into the database
+                await pool.query(
+                    `INSERT INTO user_book_sales 
+                    (transaction_id, book_id, quantity, user_id, firstname, lastname, company, country, state, 
+                    street, street2, city, zipcode, phone, email, notes, full_address) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        razorpay_payment_id, 
+                        book_id, 
+                        quantity, 
+                        user_id, 
+                        firstname, 
+                        lastname, 
+                        company, 
+                        country, 
+                        state, 
+                        street, 
+                        street2, 
+                        city, 
+                        zipcode, 
+                        phone, 
+                        email, 
+                        notes,
+                        full_address
+                    ]
+                );
+            }
+    
+            // Commit the transaction after all records have been inserted
+            await pool.commit();
+    
+            // Send success response
+            res.status(200).json({ message: "Payment and order details saved successfully" });
+        } catch (error) {
+            // Rollback the transaction in case of any error
+            await pool.rollback();
+            console.error('Error while processing payment and saving order details:', error);
+            res.status(500).json({ error: "An error occurred while processing the payment" });
         }
     });
     
