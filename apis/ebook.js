@@ -33,6 +33,7 @@ module.exports = (pool) => {
             
             const string_data = JSON.stringify(data);
             await pool.query(`UPDATE \`Jeeva-dev\`.users SET cart_details = ? WHERE id = ?`, [string_data, userId]);
+            console.log("data", data);
             
             res.json({
                 "message": "Updated cart",
