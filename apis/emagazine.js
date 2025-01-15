@@ -87,7 +87,7 @@ module.exports = (pool) => {
                 const exists = await file.exists();
                 if (!exists[0]) {
                     console.error(`File ${e.img} does not exist in the bucket.`);
-                    return null;
+                    // return null;
                 }
     
                 const [signedUrl] = await file.getSignedUrl({
