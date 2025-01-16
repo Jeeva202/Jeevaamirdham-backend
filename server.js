@@ -1,7 +1,11 @@
 const express = require('express')
 const pool = require("./connection")
 const cors = require('cors')
-
+const Razorpay = require('razorpay');
+// const razorpayInstance = new Razorpay({
+//   key_id: 'YOUR_RAZORPAY_KEY_ID', // Your Razorpay Key ID
+//   key_secret: 'YOUR_RAZORPAY_KEY_SECRET' // Your Razorpay Key Secret
+// });     
 
 
 const app = express()

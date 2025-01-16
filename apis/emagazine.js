@@ -478,14 +478,17 @@ WHERE year = ? AND month = ?;`;
         const { razorpay_payment_id, plan, amount, user_id } = req.body;
       
         try {
+            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id);
+            
           // Save payment details to the database
           await pool.query(
-            "INSERT INTO user_magazine_sales (transac_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status) VALUES (?, ?, ?, ?, ?)",
             [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
           );
-
+          console.log("");
+          
           await pool.query(
-            "UPDATE users set plan = ? where username=?", [plan, user_id]
+            "UPDATE users set plan = ? where id=?", [plan, user_id]
           )
       
           res.status(200).json({ message: "Subscription updated successfully" });

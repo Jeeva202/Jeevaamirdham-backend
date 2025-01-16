@@ -207,18 +207,19 @@ module.exports = (pool, bucket) => {
         if (!razorpay_payment_id || !amount || !user_id || !cartDetails || cartDetails.length === 0) {
             return res.status(400).json({ error: "Missing required fields" });
         }
-    
+        
         // Extract user details
         const {
             firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes
         } = userDetails;
-    
+        console.log("details", firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes);
+        
         // Create a full address string
         const full_address = `${street} ${street2 ? street2 + ', ' : ''}${city}, ${state}, ${country}, ${zipcode}`;
     
         // Start database transaction
         try {
-            await pool.beginTransaction();
+            // await pool.beginTransaction();
     
             // Insert the transaction into the orders table for each book in the cart
             for (const book of cartDetails) {
@@ -229,7 +230,7 @@ module.exports = (pool, bucket) => {
                     `INSERT INTO user_book_sales 
                     (transaction_id, book_id, quantity, user_id, firstname, lastname, company, country, state, 
                     street, street2, city, zipcode, phone, email, notes, full_address) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
                     [
                         razorpay_payment_id, 
                         book_id, 
@@ -237,29 +238,25 @@ module.exports = (pool, bucket) => {
                         user_id, 
                         firstname, 
                         lastname, 
-                        company, 
+                        company || null, 
                         country, 
                         state, 
                         street, 
-                        street2, 
+                        street2 || null, 
                         city, 
                         zipcode, 
                         phone, 
                         email, 
-                        notes,
+                        notes || null,
                         full_address
                     ]
                 );
             }
     
-            // Commit the transaction after all records have been inserted
-            await pool.commit();
     
             // Send success response
             res.status(200).json({ message: "Payment and order details saved successfully" });
         } catch (error) {
-            // Rollback the transaction in case of any error
-            await pool.rollback();
             console.error('Error while processing payment and saving order details:', error);
             res.status(500).json({ error: "An error occurred while processing the payment" });
         }
