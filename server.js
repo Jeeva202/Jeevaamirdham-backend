@@ -1,8 +1,9 @@
 const express = require('express')
 const pool = require("./connection")
 const cors = require('cors')
-
-
+const nodemailer = require('nodemailer');
+const bodyParser = require('body-parser');
+const crypto = require('crypto');
 
 const app = express()
 const port = 3001;
