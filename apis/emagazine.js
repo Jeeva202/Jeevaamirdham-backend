@@ -479,10 +479,14 @@ WHERE year = ? AND month = ?;`;
       
         try {
           // Save payment details to the database
-          await db.query(
-            "INSERT INTO subscriptions (transac_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
+          await pool.query(
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
             [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
           );
+
+          await pool.query(
+            "UPDATE users set plan = ? where username=?", [plan, user_id]
+          )
       
           res.status(200).json({ message: "Subscription updated successfully" });
         } catch (error) {
