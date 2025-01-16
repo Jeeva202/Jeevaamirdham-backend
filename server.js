@@ -9,6 +9,15 @@ const port = 3001;
 app.use(express.json());
 app.use(cors())
 
+const { Storage } = require('@google-cloud/storage');
+
+const projectId = process.env.PROJECT_ID; 
+const storage = new Storage({
+    keyFilename:"./key.json"
+});  // Create a new Google Cloud Storage instance
+const bucketName = process.env.BUCKET;
+const bucket = storage.bucket(bucketName)
+
 app.post('/check-user', async (req, res) => {
     console.log(req.body);
     
@@ -123,10 +132,31 @@ app.post('/setPlan', async (req, res)=>{
     }
 })
 
+
+app.get('/blogs', async (req, res)=>{
+    try{
+        const [getBlogs] = await pool.query('SELECT * FROM blogs')
+        const signedResults = await Promise.all(getBlogs.map(async (blog) => {
+            const signedUrl = await bucket.file(blog.img).getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+            });
+
+            blog.imgUrl = signedUrl[0];  // Set the signed URL to the result object
+            return blog;  // Return the updated book object with the signed URL
+        }));
+
+        res.send(signedResults);
+    }
+    catch(err){
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+})
+
 pool.getConnection().then(
     ()=>{
-        app.use('/emagazine-page', require('./apis/emagazine')(pool));
-        app.use('/ebooks', require('./apis/ebook')(pool));
+        app.use('/emagazine-page', require('./apis/emagazine')(pool, bucket));
+        app.use('/ebooks', require('./apis/ebook')(pool, bucket));
         app.listen(port, ()=>{console.log("connected to database")})
     }
 ).catch(err=>{
