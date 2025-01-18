@@ -128,7 +128,9 @@ pool.getConnection().then(
     ()=>{
         app.use('/emagazine-page', require('./apis/emagazine')(pool));
         app.use('/ebooks', require('./apis/ebook')(pool));
-        app.listen(port, ()=>{console.log("connected to database")})
+        app.use('/audio-video-page', require('./apis/audio_video_page')(pool));
+        // app.use('/video-page', require('./apis/video')(pool));
+        app.listen(port, ()=>{console.log("connected to database : " + port)})
     }
 ).catch(err=>{
     console.log("failed to connect to db",err);
