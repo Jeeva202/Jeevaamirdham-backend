@@ -1,16 +1,8 @@
 const router = require('express').Router()
-const AWS = require('aws-sdk')
 require('dotenv').config()
-const { Storage } = require('@google-cloud/storage');
 
-const projectId = process.env.PROJECT_ID; 
-const storage = new Storage({
-    keyFilename:"./key.json"
-});  // Create a new Google Cloud Storage instance
-const bucketName = process.env.BUCKET;
-const bucket = storage.bucket(bucketName)
 
-module.exports = (pool) => {
+module.exports = (pool, bucket) => {
     router.get('/image_check', async (req,res)=>{
         try{
                 // console.log("API called");
@@ -87,7 +79,7 @@ module.exports = (pool) => {
                 const exists = await file.exists();
                 if (!exists[0]) {
                     console.error(`File ${e.img} does not exist in the bucket.`);
-                    return null;
+                    // return null;
                 }
     
                 const [signedUrl] = await file.getSignedUrl({
@@ -486,11 +478,18 @@ WHERE year = ? AND month = ?;`;
         const { razorpay_payment_id, plan, amount, user_id } = req.body;
       
         try {
+            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id);
+            
           // Save payment details to the database
-          await db.query(
-            "INSERT INTO subscriptions (transac_id, plan, amount, user_id, status) VALUES (?, ?, ?, ?, ?)",
+          await pool.query(
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status) VALUES (?, ?, ?, ?, ?)",
             [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
           );
+          console.log("");
+          
+          await pool.query(
+            "UPDATE users set plan = ? where id=?", [plan, user_id]
+          )
       
           res.status(200).json({ message: "Subscription updated successfully" });
         } catch (error) {

@@ -1,16 +1,9 @@
 const router = require('express').Router()
 const AWS = require('aws-sdk')
 require('dotenv').config()
-const { Storage } = require('@google-cloud/storage');
 
-const projectId = process.env.PROJECT_ID;
-const storage = new Storage({
-    keyFilename: "./key.json"
-});  // Create a new Google Cloud Storage instance
-const bucketName = process.env.BUCKET;
-const bucket = storage.bucket(bucketName)
 
-module.exports = (pool) => {
+module.exports = (pool, bucket) => {
     // API to get audio data
     router.get('/audio_data', async (req, res) => {
         try {
