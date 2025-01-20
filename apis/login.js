@@ -86,22 +86,23 @@ module.exports = (pool) => {
 
     router.post("/find-user", async (req, res) => {
         try {
-            const { email } = req.body;
+            const { email, username } = req.body;
             console.log("Received request to find user:", email);
             const query = "SELECT email, password FROM users WHERE email = ?";
             const [results] = await pool.query(query, [email]);
             // Check if the user exists
             if (results.length === 0) {
-                const insertQuery = "INSERT INTO users (email) VALUES (?)";
-                await pool.query(insertQuery, [email]);
-    
-                console.log("New user created successfully:", email);
-                return res.json({ isExistingUser: false, isPasswordAvailable: false, message: "New user created successfully!" });
+                return res.json({
+                    isExistingUser: false,
+                    isPasswordAvailable: false,
+                    message: "User not found",
+                });
             }
             const user = results[0];
             res.json({
                 isExistingUser: true,
                 isPasswordAvailable: !!user.password, // Check if the password is available
+                isNewUserCreated: true
             });
         } catch (err) {
             console.error("Database error:", err);
@@ -129,34 +130,94 @@ module.exports = (pool) => {
 
 
     router.post("/create-password", async (req, res) => {
-
         try {
-            const { email, password } = req.body;
+            const { email, password, username } = req.body;
             const hashedPassword = hashPasswordWithLengthCheck(password);
-            const query = "UPDATE users SET password = ? WHERE email = ?";
-            const [result] = await pool.query(query, [hashedPassword, email]);
-
-            if (result.affectedRows === 0) {
+    
+            // Check if the user exists in the database
+            const query = "SELECT id, password FROM users WHERE email = ?";
+            const [results] = await pool.query(query, [email]);
+    
+            // If the user does not exist, create a new user and set password
+            if (results.length === 0) {
+                console.log("User not found, creating new user...");
+    
+                const [lastUser] = await pool.query('SELECT id FROM users ORDER BY id DESC LIMIT 1');
+                let newId;
+                if (lastUser.length === 0) {
+                    newId = 1; // Start ID from 1 if no users exist
+                } else {
+                    newId = lastUser[0].id + 1;
+                }
+    
+                const today = new Date();
+                const created_date = today.toISOString().slice(0, 10);
+                const expiryDate = new Date(today);
+                expiryDate.setDate(today.getDate() + 30);
+                const expiryDateFormatted = expiryDate.toISOString().slice(0, 10);
+    
+                // Insert the new user into the database
+                const insertUserQuery = `
+                    INSERT INTO \`Jeeva-dev\`.users (id, username, email, plan, created_dt, expiry_dt)
+                    VALUES (?, ?, ?, 'basic', ?, ?)
+                `;
+                await pool.query(insertUserQuery, [newId, username, email, created_date, expiryDateFormatted]);
+    
+                // Now update the password for the new user
+                const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
+                const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+    
+                if (updateResult.affectedRows === 0) {
+                    return res.status(400).json({ error: "Failed to set password. User not found." });
+                }
+    
+                console.log("New user created and password successfully updated for email:", email);
+                res.json({
+                    success: true,
+                    message: "New user created and password successfully updated!",
+                    user: {
+                        id: newId,
+                        username,
+                        email,
+                        plan: 'basic'
+                    }
+                });
+            }
+    
+            // If the user exists, update the password
+            const user = results[0];
+            const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
+            const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+    
+            if (updateResult.affectedRows === 0) {
                 return res.status(400).json({ error: "Failed to set password. User not found." });
             }
-
-            console.log("Password successfully updated for email:", email);
-            res.json({success: true, message: "Password successfully updated!"});
-        }
-        catch (err) {
+    
+            console.log("Password successfully updated for existing user:", email);
+            res.json({
+                success: true,
+                message: "Password successfully updated!",
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email,
+                    plan: 'basic'
+                }
+            });
+    
+        } catch (err) {
             console.error("Database error:", err);
             res.status(500).send({ error: err.message });
         }
-
-
     });
+    
 
-    router.post("/login",async (req, res) => {
-        try{
+    router.post("/login", async (req, res) => {
+        try {
             const { email, password } = req.body;
             const hashedPassword = hashPassword(password);
             console.log("Received request to login:", email, hashedPassword);
-            const results= await pool.query("SELECT * FROM users WHERE email = ? AND password = ?", [email, hashedPassword]);
+            const results = await pool.query("SELECT * FROM users WHERE email = ? AND password = ?", [email, hashedPassword]);
             if (results.length === 0) {
                 return res.status(400).json({ error: "Invalid email or password." });
             }
