@@ -29,7 +29,7 @@ const hashPasswordWithLengthCheck = (password) => {
     return hashedPassword;
 };
 
-const sendOtpEmail = (email, otp, res) => {
+const sendOtpEmail = (email, otp, res, signedUrl) => {
     const mailOptions = {
         from: `"JeevaAmirdham" <admin@jeevaamirdham.org>`,
         to: email,
@@ -38,7 +38,7 @@ const sendOtpEmail = (email, otp, res) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05)">
                 <!-- Logo Section -->
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="https://www.jeevaamirdham.in/static/media/jeevaamirdhamLogo.0937d2b10c788a56c7a743f43af2932a.svg" alt="Jeeva Logo" style="max-width: 150px; height: auto;">
+                    <img src="${signedUrl}" alt="Jeeva Logo" style="max-width: 150px; height: auto;">
                 </div>
                 <!-- Header Section -->
                 <h1 style="text-align: center; color: #f39300; margin-bottom: 20px;">Verification Code</h1>
@@ -82,7 +82,7 @@ const sendOtpEmail = (email, otp, res) => {
         res.json({ message: "OTP sent successfully!" });
     });
 };
-module.exports = (pool) => {
+module.exports = (pool,bucket) => {
 
     router.post("/find-user", async (req, res) => {
         try {
@@ -112,13 +112,18 @@ module.exports = (pool) => {
 
 
 
-    router.post("/send-otpToEmail", (req, res) => {
+    router.post("/send-otpToEmail", async(req, res) => {
         const { email, otp } = req.body;
         // const { otp } = req.body;
         console.log("Received request to send OTP to:", email, otp);
         try {
+            const signedUrl = await bucket.file("images/jeevaamirdhamLogo.svg").getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+            });
             // Send OTP to email (or SMS if applicable)
-            sendOtpEmail(email, otp, res);
+            console.log(signedUrl[0])
+            sendOtpEmail(email, otp, res, signedUrl[0]);
 
             // Return OTP to client (Redux will store it)
             res.json({ message: "OTP sent successfully!", otp });
@@ -129,6 +134,88 @@ module.exports = (pool) => {
     });
 
 
+    // router.post("/create-password", async (req, res) => {
+    //     try {
+    //         const { email, password, username } = req.body;
+    //         const hashedPassword = hashPasswordWithLengthCheck(password);
+    
+    //         // Check if the user exists in the database
+    //         const query = "SELECT id, password FROM users WHERE email = ?";
+    //         const [results] = await pool.query(query, [email]);
+    
+    //         // If the user does not exist, create a new user and set password
+    //         if (results.length === 0) {
+    //             console.log("User not found, creating new user...");
+    
+    //             const [lastUser] = await pool.query('SELECT id FROM users ORDER BY id DESC LIMIT 1');
+    //             let newId;
+    //             if (lastUser.length === 0) {
+    //                 newId = 1; // Start ID from 1 if no users exist
+    //             } else {
+    //                 newId = lastUser[0].id + 1;
+    //             }
+    
+    //             const today = new Date();
+    //             const created_date = today.toISOString().slice(0, 10);
+    //             const expiryDate = new Date(today);
+    //             expiryDate.setDate(today.getDate() + 30);
+    //             const expiryDateFormatted = expiryDate.toISOString().slice(0, 10);
+    
+    //             // Insert the new user into the database
+    //             const insertUserQuery = `
+    //                 INSERT INTO \`Jeeva-dev\`.users (id, username, email, plan, created_dt, expiry_dt)
+    //                 VALUES (?, ?, ?, 'basic', ?, ?)
+    //             `;
+    //             await pool.query(insertUserQuery, [newId, username, email, created_date, expiryDateFormatted]);
+    
+    //             // Now update the password for the new user
+    //             const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
+    //             const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+    
+    //             if (updateResult.affectedRows === 0) {
+    //                 return res.status(400).json({ error: "Failed to set password. User not found." });
+    //             }
+    
+    //             console.log("New user created and password successfully updated for email:", email);
+    //             res.json({
+    //                 success: true,
+    //                 message: "New user created and password successfully updated!",
+    //                 user: {
+    //                     id: newId,
+    //                     username,
+    //                     email,
+    //                     plan: 'basic'
+    //                 }
+    //             });
+    //         }
+    
+    //         // If the user exists, update the password
+    //         const user = results[0];
+    //         const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
+    //         const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+    
+    //         if (updateResult.affectedRows === 0) {
+    //             return res.status(400).json({ error: "Failed to set password. User not found." });
+    //         }
+    
+    //         console.log("Password successfully updated for existing user:", email);
+    //         res.json({
+    //             success: true,
+    //             message: "Password successfully updated!",
+    //             user: {
+    //                 id: user.id,
+    //                 username: user.username,
+    //                 email,
+    //                 plan: 'basic'
+    //             }
+    //         });
+    
+    //     } catch (err) {
+    //         console.error("Database error:", err);
+    //         res.status(500).send({ error: err.message });
+    //     }
+    // });
+    
     router.post("/create-password", async (req, res) => {
         try {
             const { email, password, username } = req.body;
@@ -136,19 +223,14 @@ module.exports = (pool) => {
     
             // Check if the user exists in the database
             const query = "SELECT id, password FROM users WHERE email = ?";
-            const [results] = await pool.query(query, [email]);
+            const [results] = await pool.query(query, [email.trim()]);
     
             // If the user does not exist, create a new user and set password
             if (results.length === 0) {
                 console.log("User not found, creating new user...");
     
                 const [lastUser] = await pool.query('SELECT id FROM users ORDER BY id DESC LIMIT 1');
-                let newId;
-                if (lastUser.length === 0) {
-                    newId = 1; // Start ID from 1 if no users exist
-                } else {
-                    newId = lastUser[0].id + 1;
-                }
+                let newId = lastUser.length === 0 ? 1 : lastUser[0].id + 1;
     
                 const today = new Date();
                 const created_date = today.toISOString().slice(0, 10);
@@ -158,53 +240,58 @@ module.exports = (pool) => {
     
                 // Insert the new user into the database
                 const insertUserQuery = `
-                    INSERT INTO \`Jeeva-dev\`.users (id, username, email, plan, created_dt, expiry_dt)
+                    INSERT INTO users (id, username, email, plan, created_dt, expiry_dt)
                     VALUES (?, ?, ?, 'basic', ?, ?)
                 `;
-                await pool.query(insertUserQuery, [newId, username, email, created_date, expiryDateFormatted]);
+                await pool.query(insertUserQuery, [newId, username, email.trim(), created_date, expiryDateFormatted]);
+    
+                // Re-fetch the newly inserted user to confirm
+                const [newUserResult] = await pool.query("SELECT id FROM users WHERE email = ?", [email.trim()]);
+                if (newUserResult.length === 0) {
+                    return res.status(500).json({ error: "Failed to confirm new user creation." });
+                }
     
                 // Now update the password for the new user
                 const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
-                const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+                const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email.trim()]);
     
                 if (updateResult.affectedRows === 0) {
                     return res.status(400).json({ error: "Failed to set password. User not found." });
                 }
     
-                console.log("New user created and password successfully updated for email:", email);
-                res.json({
+                console.log("New user created and password successfully updated for email:", email.trim());
+                return res.json({
                     success: true,
                     message: "New user created and password successfully updated!",
                     user: {
                         id: newId,
                         username,
-                        email,
-                        plan: 'basic'
-                    }
+                        email: email.trim(),
+                        plan: 'basic',
+                    },
                 });
             }
     
             // If the user exists, update the password
             const user = results[0];
             const addPasswordQuery = "UPDATE users SET password = ? WHERE email = ?";
-            const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email]);
+            const [updateResult] = await pool.query(addPasswordQuery, [hashedPassword, email.trim()]);
     
             if (updateResult.affectedRows === 0) {
                 return res.status(400).json({ error: "Failed to set password. User not found." });
             }
     
-            console.log("Password successfully updated for existing user:", email);
+            console.log("Password successfully updated for existing user:", email.trim());
             res.json({
                 success: true,
                 message: "Password successfully updated!",
                 user: {
                     id: user.id,
-                    username: user.username,
-                    email,
-                    plan: 'basic'
-                }
+                    username: username || "N/A", // Username may not exist for older users
+                    email: email.trim(),
+                    plan: 'basic',
+                },
             });
-    
         } catch (err) {
             console.error("Database error:", err);
             res.status(500).send({ error: err.message });
