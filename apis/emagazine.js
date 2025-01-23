@@ -245,6 +245,40 @@ WHERE year = ? AND month = ?;`;
         }
     });
     
+    router.get('/get-plan-upgrade-amount', async (req, res) => {
+        try {
+            const { planName, userId } = req.query;
+    
+            const query = `SELECT 
+                CASE 
+                    WHEN (SELECT plan FROM users WHERE id = ?) != ? 
+                    THEN 
+                        (SELECT price FROM plans WHERE name = ?) - (SELECT price FROM plans WHERE name = (SELECT plan FROM users WHERE id = ?))
+                    ELSE 
+                        (SELECT price FROM plans WHERE name = (SELECT plan FROM users WHERE id = ?))
+                END AS upgrade,
+                CASE 
+                    WHEN (SELECT plan FROM users WHERE id = ?) != ? 
+                    THEN 'upgrade' 
+                    ELSE 'renewal' 
+                END AS purchase_type`;
+    
+            // Execute the query using pool.query
+            const [rows] = await pool.query(query, [userId, planName, planName, userId, userId, userId, planName]);
+    
+            // If no rows are returned, planName is invalid
+            if (rows.length === 0) {
+                return res.status(404).json({ error: 'Plan not found' });
+            }
+    
+            const { upgrade, purchase_type } = rows[0]; // Access both the upgrade price and purchase type
+            return res.json({ price: upgrade, purchase_type });
+        } catch (err) {
+            console.error("DB error:", err);
+            res.status(500).send({ error: "Internal Server Error occurred" });
+        }
+    });
+    
     // Route for getting next/previous magazine details
     router.get("/audio-prev-nxt-details", async (req, res) => {
         try {
@@ -488,7 +522,7 @@ WHERE year = ? AND month = ?;`;
           console.log("");
           
           await pool.query(
-            "UPDATE users set plan = ? where id=?", [plan, user_id]
+            "UPDATE users SET plan = ?, expiry_dt = DATE_ADD(expiry_dt, INTERVAL 1 YEAR) WHERE id=?", [plan, user_id]
           )
       
           res.status(200).json({ message: "Subscription updated successfully" });
@@ -498,7 +532,39 @@ WHERE year = ? AND month = ?;`;
         }
       });
 
+      router.post("/upgrade-renewal-success", async (req, res) => {
+        const { razorpay_payment_id, plan, amount, user_id, purchase_type } = req.body;
+      
+        try {
+            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id, purchase_type);
+            
+                      // Save payment details to the database
+          await pool.query(
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status) VALUES (?, ?, ?, ?, ?)",
+            [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
+          );
+            if(purchase_type === 'upgrade'){
+                await pool.query(
+                    "UPDATE users set plan = ? where id=?", [plan, user_id]
+                  )
+            }
+            else{
+                await pool.query(
+                    "UPDATE `Jeeva-dev`.users set expiry_dt = DATE_ADD(expiry_dt, INTERVAL 1 YEAR) where id=?", [user_id]
+                )
+            }
 
+
+          console.log("");
+          
+
+      
+          res.status(200).json({ message: "Subscription updated successfully" });
+        } catch (error) {
+          console.error("Error updating subscription:", error);
+          res.status(500).json({ message: "Failed to update subscription" });
+        }
+      });
 
 
     
