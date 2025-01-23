@@ -160,6 +160,32 @@ app.get('/blogs', async (req, res) => {
     }
 })
 
+app.get('/todays-thoughts', async (req, res) => {
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+        console.log(today, new Date())
+        const [todayThoughts] = await pool.query(
+            'SELECT * FROM todaysThoughts WHERE date = ? ORDER BY id LIMIT 3',
+            [today]
+        );
+
+        if (todayThoughts.length > 0) {
+            console.log('Fetched thoughts:', todayThoughts);
+            return res.json(todayThoughts);
+        }
+
+        const [randomThoughts] = await pool.query(
+            'SELECT * FROM todaysThoughts ORDER BY RAND() LIMIT 3'
+        );
+        console.log('random thoughts:', randomThoughts);
+        res.json(randomThoughts);
+    } catch (err) {
+        console.error('Error fetching thoughts:', err);
+        res.status(500).json({ error: 'Failed to fetch thoughts' });
+    }
+});
+
+
 pool.getConnection().then(
     () => {
         app.use('/emagazine-page', require('./apis/emagazine')(pool, bucket));
