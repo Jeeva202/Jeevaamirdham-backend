@@ -238,7 +238,7 @@ app.post('/updateUserDetails', async (req, res) => {
     }
 });
 
-app.delete("/deactivate_user", async (req, res) => {
+app.post("/deactivate_user", async (req, res) => {
     try{
         const {userId} = req.body;
         await pool.query('INSERT INTO archive_users SELECT * FROM users WHERE id = ?', [userId]);
