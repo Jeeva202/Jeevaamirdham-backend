@@ -54,22 +54,6 @@ app.post('/create-user', async (req, res) => {
             return res.status(400).send({ error: 'At least one login method (email, phone, googleId, facebookId) is required' });
         }
 
-        // let user;
-
-
-        // if (email) {
-        //     [user] = await pool.promise().query('SELECT * FROM `Jeeva-dev`.users WHERE email = ?', [email]);
-        // } else if (ph) {
-        //     [user] = await pool.promise().query('SELECT * FROM `Jeeva-dev`.users WHERE ph_no = ?', [ph]);
-        // } else if (googleId) {
-        //     [user] = await pool.promise().query('SELECT * FROM `Jeeva-dev`.users WHERE google_id = ?', [googleId]);
-        // } else if (facebookId) {
-        //     [user] = await pool.promise().query('SELECT * FROM `Jeeva-dev`.users WHERE facebook_id = ?', [facebookId]);
-        // }
-
-        // if (user && user.length > 0) {
-        //     return res.json({ message: 'User found', user: user[0] });
-        // }
 
         // If the user doesn't exist, create a new user
         // Generate a new custom ID
@@ -185,6 +169,87 @@ app.get('/todays-thoughts', async (req, res) => {
     }
 });
 
+app.get('/getUserDetails', async (req, res)=>{
+    try{
+        const {userId} = req.query;
+        console.log("userId", userId);
+        
+        const [results] = await pool.query('SELECT f_name as firstName, l_name as lastName, gender, dob, phone_number as phone, email, door_no as doorNo, street_name as streetName, city, state, country, zip as zipCode FROM users WHERE id = ?', [userId]);
+        res.send(results);
+    }
+    catch(err){
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+})
+
+app.post('/updateUserDetails', async (req, res) => {
+    try {
+        const {
+            userId,
+            firstName,
+            lastName,
+            gender,
+            dob,
+            phone,
+            email,
+            doorNo,
+            streetName,
+            city,
+            state,
+            country,
+            zipCode,
+        } = req.body; // Get the data sent from the client
+        console.log("body", req.body);
+        
+        // SQL query to update user details
+        const updateQuery = `
+            UPDATE users 
+            SET f_name = ?, l_name = ?, gender = ?, dob = ?, phone_number = ?, 
+                email = ?, door_no = ?, street_name = ?, city = ?, state = ?, 
+                country = ?, zip = ?
+            WHERE id = ?
+        `;
+        const validDob = dob && !isNaN(Date.parse(dob)) ? dob : null;
+        // Execute the query with the new data and the user ID
+        const [results] = await pool.query(updateQuery, [
+            firstName || '',
+            lastName || '',
+            gender || '',
+            validDob,
+            phone || '',
+            email || '',
+            doorNo || '',
+            streetName || '',
+            city || '',
+            state || '',
+            country || '',
+            zipCode || '',
+            userId,
+        ]);
+
+        // Check if any row was affected (i.e., the user was updated)
+        if (results.affectedRows > 0) {
+            res.status(200).send({ message: 'User details updated successfully.' });
+        } else {
+            res.status(404).send({ message: 'User not found or no changes made.' });
+        }
+    } catch (err) {
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+});
+
+app.delete("/deactivate_user", async (req, res) => {
+    try{
+        const {userId} = req.body;
+        await pool.query('INSERT INTO archive_users SELECT * FROM users WHERE id = ?', [userId]);
+        await pool.query('DELETE FROM users WHERE id = ?', [userId]);
+        res.send({message: "User deleted successfully"});
+    }
+    catch (err){
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+}
+)
 
 pool.getConnection().then(
     () => {
