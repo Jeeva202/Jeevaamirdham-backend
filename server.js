@@ -247,6 +247,92 @@ app.delete("/deactivate_user", async (req, res) => {
     }
 }
 )
+app.get("/getUserOrders", async (req, res) => {
+    const {userId} = req.query; // Hardcoded userId for this example
+
+    if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+    }
+
+    try {
+        // Fetch orders from the sales table
+        const salesQuery = `
+            SELECT 
+                s.id AS order_id,
+                s.transaction_id,
+                s.quantity,
+                s.firstname,
+                s.lastname,
+                s.full_address,
+                s.created_at,
+                b.id AS book_id,
+                b.title AS book_title,
+                b.img AS book_image,
+                b.offPrice AS book_price
+            FROM user_book_sales s
+            INNER JOIN book b ON s.book_id = b.id
+            WHERE s.user_id = ?
+            ORDER BY s.created_at DESC;
+        `;
+        const [salesResult] = await pool.query(salesQuery, [userId]); // MySQL returns result as [rows, fields]
+
+        // Ensure salesResult is not empty
+        if (!salesResult || salesResult.length === 0) {
+            return res.json([]);
+        }
+
+        // Group data by transaction_id
+        const groupedOrders = {};
+
+        // Loop through each sale and process asynchronously
+        for (const row of salesResult) {
+            const transactionId = row.transaction_id;
+
+            // Initialize the order if it's the first time seeing this transactionId
+            if (!groupedOrders[transactionId]) {
+                groupedOrders[transactionId] = {
+                    orderId: transactionId,
+                    orderDate: row.created_at,
+                    shipTo: `${row.firstname} ${row.lastname}`,
+                    shipAt: row.full_address,
+                    totalPrice: 0,
+                    items: [],
+                };
+            }
+
+            // Generate signed URL for the book image
+            // const book_image_data = row.book_image;
+            const signedUrl = await bucket.file(row.book_image).getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+            });
+
+            // Push book item details including signed URL
+            groupedOrders[transactionId].items.push({
+                bookId: row.book_id,  
+                bookTitle: row.book_title,
+                bookImage: signedUrl[0],  // Use the signed URL
+                price: row.book_price,
+                quantity: row.quantity, 
+            });
+
+            // Update the total price for the order
+            groupedOrders[transactionId].totalPrice += parseFloat(row.book_price) * row.quantity;
+        }
+
+        // Convert grouped orders to an array
+        const orders = Object.values(groupedOrders);
+
+        // Send the response
+        res.json(orders);
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ error: "An error occurred while fetching orders" });
+    }
+});
+
+
+
 pool.getConnection().then(
     () => {
         app.use('/emagazine-page', require('./apis/emagazine')(pool, bucket));
