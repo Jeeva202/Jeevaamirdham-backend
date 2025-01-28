@@ -513,16 +513,16 @@ WHERE year = ? AND month = ?;`;
       
         try {
             console.log("razor_pay", razorpay_payment_id, plan, amount, user_id);
-            
+            const today = new Date().toISOString().slice(0, 10);
           // Save payment details to the database
           await pool.query(
-            "INSERT INTO user_magazine_sales (transac_id, plan, amount, u_id, status) VALUES (?, ?, ?, ?, ?)",
-            [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, u_id, status, purchase_dt) VALUES (?, ?, ?, ?, ?, ?)",
+            [razorpay_payment_id, plan, amount, user_id, "completed", today] // Use user ID from session or token
           );
           console.log("plan", plan, "u_id", user_id);
           
           await pool.query(
-            "UPDATE users SET plan = ?,expiry_dt = DATE_ADD(CURDATE(), INTERVAL 1 YEAR) WHERE id=?", [plan, user_id]
+            "UPDATE users SET plan = ?,expiry_dt = DATE_ADD(CURDATE(), INTERVAL 11 MONTH) WHERE id=?", [plan, user_id]
           )
       
           res.status(200).json({ message: "Subscription updated successfully" });
@@ -537,11 +537,11 @@ WHERE year = ? AND month = ?;`;
       
         try {
             console.log("razor_pay", razorpay_payment_id, plan, amount, user_id, purchase_type);
-            
+            const today = new Date().toISOString().slice(0, 10);
                       // Save payment details to the database
           await pool.query(
-            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status) VALUES (?, ?, ?, ?, ?)",
-            [razorpay_payment_id, plan, amount, user_id, "completed"] // Use user ID from session or token
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status, purchase_dt) VALUES (?, ?, ?, ?, ?,?)",
+            [razorpay_payment_id, plan, amount, user_id, "completed", today] // Use user ID from session or token
           );
             if(purchase_type === 'upgrade'){
                 await pool.query(
@@ -550,7 +550,7 @@ WHERE year = ? AND month = ?;`;
             }
             else{
                 await pool.query(
-                    "UPDATE `Jeeva-dev`.users set expiry_dt = DATE_ADD(expiry_dt, INTERVAL 1 YEAR) where id=?", [user_id]
+                    "UPDATE `Jeeva-dev`.users set expiry_dt = DATE_ADD(expiry_dt, INTERVAL 11 MONTH) where id=?", [user_id]
                 )
             }
 

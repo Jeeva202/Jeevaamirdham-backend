@@ -202,12 +202,15 @@ module.exports = (pool, bucket) => {
     // })
 
     router.post('/payment-success', async (req, res) => {
-        const { razorpay_payment_id, amount, user_id, userDetails, cartDetails } = req.body;
+        const { razorpay_payment_id, amount, user_id, userDetails } = req.body;
 
-        if (!razorpay_payment_id || !amount || !user_id || !cartDetails || cartDetails.length === 0) {
+        if (!razorpay_payment_id || !amount || !user_id ) {
             return res.status(400).json({ error: "Missing required fields" });
         }
-
+        // console.log("payment success", razorpay_payment_id, amount, user_id, userDetails, cartDetails);
+        const [cartDetailsAPI] = await pool.query(`SELECT cart_details FROM users WHERE id = ?`, [user_id]);
+        const cartDetails = JSON.parse(cartDetailsAPI[0].cart_details);
+        console.log("cartDetailsAPI", cartDetails);
         // Extract user details
         const {
             firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes
@@ -253,6 +256,9 @@ module.exports = (pool, bucket) => {
                 );
             }
 
+            // Remove from cart
+
+            await pool.query(`UPDATE users SET cart_details = '[]' WHERE id = ?`, [user_id]);
 
             // Send success response
             res.status(200).json({ message: "Payment and order details saved successfully" });
