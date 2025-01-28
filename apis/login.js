@@ -220,8 +220,8 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+const otpStorage = {};
 // Utility functions
-
 const hashPassword = (password) =>
     crypto.createHash("sha256").update(password).digest("hex");
 
@@ -322,26 +322,103 @@ module.exports = (pool,bucket) => {
 
 
 
-    router.post("/send-otpToEmail", async(req, res) => {
-        const { email, otp } = req.body;
-        // const { otp } = req.body;
-        console.log("Received request to send OTP to:", email, otp);
-        try {
-            const signedUrl = await bucket.file("images/jeevaamirdham_logo.png").getSignedUrl({
-                action: 'read',
-                expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
-            });
-            // Send OTP to email (or SMS if applicable)
-            console.log(signedUrl[0])
-            sendOtpEmail(email, otp, res, signedUrl[0]);
+    // router.post("/send-otpToEmail", async(req, res) => {
+    //     const { email, otp } = req.body;
+    //     // const { otp } = req.body;
+    //     console.log("Received request to send OTP to:", email, otp);
+    //     try {
+    //         const signedUrl = await bucket.file("images/jeevaamirdham_logo.png").getSignedUrl({
+    //             action: 'read',
+    //             expires: Date.now() + 60 * 60 * 1000  // 1 hour expiration
+    //         });
+    //         // Send OTP to email (or SMS if applicable)
+    //         console.log(signedUrl[0])
+    //         sendOtpEmail(email, otp, res, signedUrl[0]);
 
-            // Return OTP to client (Redux will store it)
-            res.json({ message: "OTP sent successfully!", otp });
-        } catch (err) {
-            console.error("Database error:", err);
-            res.status(500).send({ error: err.message });
+    //         // Return OTP to client (Redux will store it)
+    //         res.json({ message: "OTP sent successfully!", otp });
+    //     } catch (err) {
+    //         console.error("Database error:", err);
+    //         res.status(500).send({ error: err.message });
+    //     }
+    // });
+
+    router.post("/send-otpToEmail", async (req, res) => {
+        const { email } = req.body;
+    
+        if (!email) {
+            return res.status(400).json({ success: false, error: "Email is required" });
+        }
+    
+        try {
+            // Generate a 6-digit OTP
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+            // Set OTP expiry (5 minutes)
+            const expiry = Date.now() + 5 * 60 * 1000;
+    
+            // Hash OTP before storing it
+            const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    
+            // Store hashed OTP and expiry against the user's email
+            otpStorage[email.toLowerCase()] = { otp: hashedOtp, expiry };
+    
+            console.log(`Generated OTP: ${otp} (Hashed: ${hashedOtp}) for ${email}`);
+    
+            // Send OTP via email
+            const signedUrl = await bucket.file("images/jeevaamirdham_logo.png").getSignedUrl({
+                action: "read",
+                expires: Date.now() + 60 * 60 * 1000, // 1-hour expiration
+            });
+    
+            sendOtpEmail(email, otp, res, signedUrl[0]); // Implement your email sending logic here.
+    
+            res.json({ success: true, message: "OTP sent successfully!" });
+        } catch (error) {
+            console.error("Error sending OTP:", error);
+            res.status(500).json({ success: false, error: "Failed to send OTP." });
         }
     });
+    
+    router.post("/verify-otp", (req, res) => {
+        const { email, otp } = req.body;
+    
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, error: "Email and OTP are required" });
+        }
+    
+        try {
+            // Retrieve stored OTP data for the email
+            const storedData = otpStorage[email.toLowerCase()];
+    
+            if (!storedData) {
+                return res.status(400).json({ success: false, error: "OTP not found or expired." });
+            }
+    
+            const { otp: storedHashedOtp, expiry } = storedData;
+    
+            // Check if OTP is expired
+            if (Date.now() > expiry) {
+                delete otpStorage[email.toLowerCase()]; // Clean up expired OTP
+                return res.status(400).json({ success: false, error: "OTP has expired. Please request a new one." });
+            }
+    
+            // Hash the received OTP and compare with the stored hash
+            const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    
+            if (hashedOtp === storedHashedOtp) {
+                // OTP is valid
+                delete otpStorage[email.toLowerCase()]; // Clean up after successful verification
+                return res.json({ success: true, message: "OTP verified successfully!" });
+            } else {
+                return res.status(400).json({ success: false, error: "Invalid OTP. Please try again." });
+            }
+        } catch (error) {
+            console.error("Error verifying OTP:", error);
+            res.status(500).json({ success: false, error: "Failed to verify OTP." });
+        }
+    });
+    
 
     router.post("/create-password", async (req, res) => {
         try {
