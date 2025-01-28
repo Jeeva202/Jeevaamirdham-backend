@@ -208,7 +208,7 @@ app.post('/updateUserDetails', async (req, res) => {
                 country = ?, zip = ?
             WHERE id = ?
         `;
-        const validDob = dob && !isNaN(Date.parse(dob)) ? dob : null;
+        const validDob = dob && !isNaN(Date.parse(dob)) ? new Date(dob).toISOString().slice(0,10) : null;
         // Execute the query with the new data and the user ID
         const [results] = await pool.query(updateQuery, [
             firstName || '',
