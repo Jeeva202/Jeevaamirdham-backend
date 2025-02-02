@@ -261,6 +261,52 @@ app.post("/deactivate_user", async (req, res) => {
     }
 }
 )
+app.post("/subscribe", async (req, res) => {
+    const { userId } = req.body
+    if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+    }
+    try {
+        // Check if user exists
+        const [result] = await pool.query('SELECT sub_newsletter FROM users WHERE id = ?', [userId]);
+        console.log(result[0].sub_newsletter)
+
+        if (result[0].sub_newsletter == 1) {
+            return res.status(400).json({ message: 'User is already subscribed' });
+        }
+
+        // Update sub_newsletter to 1 (subscribe)
+        await pool.query('UPDATE users SET sub_newsletter = 1 WHERE id = ?', [userId]);
+        res.status(200).json({ message: 'Subscribed successfully!', success: true });
+
+    } catch (error) {
+        console.error('Subscription Error:', error);
+        res.status(500).json({ message: 'Internal server error', failure: true });
+    }
+});
+app.post("/un-subscribe", async (req, res) => {
+    const { userId } = req.query
+    if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+    }
+    try {
+        // Check if user exists
+        const [result] = await pool.query('SELECT sub_newsletter FROM users WHERE id = ?', [userId]);
+        console.log(result[0].sub_newsletter)
+
+        if (result[0].sub_newsletter == 0) {
+            return res.status(400).json({ message: 'User is already Unsubscribed' });
+        }
+
+        // Update sub_newsletter to 1 (subscribe)
+        await pool.query('UPDATE users SET sub_newsletter = 0 WHERE id = ?', [userId]);
+        res.status(200).json({ message: 'Unsubscribed successfully!', success: true });
+
+    } catch (error) {
+        console.error('Subscription Error:', error);
+        res.status(500).json({ message: 'Internal server error', failure: true });
+    }
+});
 app.get("/getUserOrders", async (req, res) => {
     const { userId } = req.query; // Hardcoded userId for this example
 
@@ -344,6 +390,7 @@ app.get("/getUserOrders", async (req, res) => {
         res.status(500).json({ error: "An error occurred while fetching orders" });
     }
 });
+
 
 
 
