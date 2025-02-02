@@ -103,6 +103,20 @@ app.get('/getPlan', async (req, res) => {
         res.status(500).send({ error: 'Internal Server Error', details: err.message });
     }
 })
+app.get('/getExpiry', async (req, res) => {
+    try {
+        const query = `SELECT created_dt, expiry_dt FROM users
+                        where id =?`
+
+        const [results] = await pool.query(query, [req.query.id])
+
+        res.send(results)
+    }
+    catch (err) {
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+})
+
 app.post('/setPlan', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
@@ -169,15 +183,15 @@ app.get('/todays-thoughts', async (req, res) => {
     }
 });
 
-app.get('/getUserDetails', async (req, res)=>{
-    try{
-        const {userId} = req.query;
+app.get('/getUserDetails', async (req, res) => {
+    try {
+        const { userId } = req.query;
         console.log("userId", userId);
-        
+
         const [results] = await pool.query('SELECT f_name as firstName, l_name as lastName, gender, dob, phone_number as phone, email, door_no as doorNo, street_name as streetName, city, state, country, zip as zipCode FROM users WHERE id = ?', [userId]);
         res.send(results);
     }
-    catch(err){
+    catch (err) {
         res.status(500).send({ error: 'Internal Server Error', details: err.message });
     }
 })
@@ -199,7 +213,7 @@ app.post('/updateUserDetails', async (req, res) => {
             zipCode,
         } = req.body; // Get the data sent from the client
         console.log("body", req.body);
-        
+
         // SQL query to update user details
         const updateQuery = `
             UPDATE users 
@@ -208,7 +222,7 @@ app.post('/updateUserDetails', async (req, res) => {
                 country = ?, zip = ?
             WHERE id = ?
         `;
-        const validDob = dob && !isNaN(Date.parse(dob)) ? new Date(dob).toISOString().slice(0,10) : null;
+        const validDob = dob && !isNaN(Date.parse(dob)) ? new Date(dob).toISOString().slice(0, 10) : null;
         // Execute the query with the new data and the user ID
         const [results] = await pool.query(updateQuery, [
             firstName || '',
@@ -236,19 +250,19 @@ app.post('/updateUserDetails', async (req, res) => {
     }
 });
 app.delete("/deactivate_user", async (req, res) => {
-    try{
-        const {userId} = req.body;
+    try {
+        const { userId } = req.body;
         await pool.query('INSERT INTO archive_users SELECT * FROM users WHERE id = ?', [userId]);
         await pool.query('DELETE FROM users WHERE id = ?', [userId]);
-        res.send({message: "User deleted successfully"});
+        res.send({ message: "User deleted successfully" });
     }
-    catch (err){
+    catch (err) {
         res.status(500).send({ error: 'Internal Server Error', details: err.message });
     }
 }
 )
 app.get("/getUserOrders", async (req, res) => {
-    const {userId} = req.query; // Hardcoded userId for this example
+    const { userId } = req.query; // Hardcoded userId for this example
 
     if (!userId) {
         return res.status(400).json({ error: "User ID is required" });
@@ -309,11 +323,11 @@ app.get("/getUserOrders", async (req, res) => {
 
             // Push book item details including signed URL
             groupedOrders[transactionId].items.push({
-                bookId: row.book_id,  
+                bookId: row.book_id,
                 bookTitle: row.book_title,
                 bookImage: signedUrl[0],  // Use the signed URL
                 price: row.book_price,
-                quantity: row.quantity, 
+                quantity: row.quantity,
             });
 
             // Update the total price for the order
