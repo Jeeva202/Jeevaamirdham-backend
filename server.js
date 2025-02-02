@@ -71,15 +71,15 @@ app.post('/create-user', async (req, res) => {
         const created_date = today.toISOString().slice(0, 10)
         const expiryDate = new Date(today);
         expiryDate.setDate(today.getDate() + 30);
-        const expiryDateFormatted = expiryDate.toISOString().slice(0, 10);
+        const expiryDateFormatted = expiryDate.toISOString().slice(0, 10)
         // Insert the new user into the database with the custom ID
         const query = `
-            INSERT INTO \`Jeeva-dev\`.users (id, username, email, phone_number, plan, created_dt, expiry_dt)
-            VALUES (?, ?, ?, ?, 'basic',?,?)
+            INSERT INTO \`Jeeva-dev\`.users (id, username, email, phone_number, plan, created_dt, expiry_dt, sub_newsletter)
+            VALUES (?, ?, ?, ?, 'basic',?,?, ?)
         `;
         await pool.query(query, [newId, name, email || null, ph || null,
             //  googleId || null, facebookId || null,
-            created_date, expiryDateFormatted]);
+            created_date, expiryDateFormatted, 0]);
 
         res.json({ message: 'New user created successfully', user: { id: newId, name, email, ph, plan } });
 
@@ -249,7 +249,7 @@ app.post('/updateUserDetails', async (req, res) => {
         res.status(500).send({ error: 'Internal Server Error', details: err.message });
     }
 });
-app.delete("/deactivate_user", async (req, res) => {
+app.post("/deactivate_user", async (req, res) => {
     try {
         const { userId } = req.body;
         await pool.query('INSERT INTO archive_users SELECT * FROM users WHERE id = ?', [userId]);

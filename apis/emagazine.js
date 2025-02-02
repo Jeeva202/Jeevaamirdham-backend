@@ -265,7 +265,8 @@ WHERE year = ? AND month = ?;`;
     
             // Execute the query using pool.query
             const [rows] = await pool.query(query, [userId, planName, planName, userId, userId, userId, planName]);
-    
+            console.log("purchase_type", rows);
+            
             // If no rows are returned, planName is invalid
             if (rows.length === 0) {
                 return res.status(404).json({ error: 'Plan not found' });
@@ -533,17 +534,19 @@ WHERE year = ? AND month = ?;`;
       });
 
       router.post("/upgrade-renewal-success", async (req, res) => {
-        const { razorpay_payment_id, plan, amount, user_id, purchase_type } = req.body;
+        const { razorpay_payment_id, plan, amount, user_id, purchaseType } = req.body;
       
         try {
-            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id, purchase_type);
+            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id, purchaseType);
             const today = new Date().toISOString().slice(0, 10);
                       // Save payment details to the database
           await pool.query(
-            "INSERT INTO user_magazine_sales (transac_id, plan, amount, id, status, purchase_dt) VALUES (?, ?, ?, ?, ?,?)",
+            "INSERT INTO user_magazine_sales (transac_id, plan, amount, u_id, status, purchase_dt) VALUES (?, ?, ?, ?, ?,?)",
             [razorpay_payment_id, plan, amount, user_id, "completed", today] // Use user ID from session or token
           );
-            if(purchase_type === 'upgrade'){
+            if(purchaseType === 'upgrade'){
+                console.log("inside upgrade");
+                
                 await pool.query(
                     "UPDATE users set plan = ? where id=?", [plan, user_id]
                   )
