@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const AWS = require('aws-sdk')
 require('dotenv').config()
-
+const nodemailer = require('nodemailer');
 
 module.exports = (pool, bucket) => {
     router.post("/add_to_cart", async (req, res) => {
@@ -204,12 +204,35 @@ module.exports = (pool, bucket) => {
     router.post('/payment-success', async (req, res) => {
         const { razorpay_payment_id, amount, user_id, userDetails } = req.body;
 
-        if (!razorpay_payment_id || !amount || !user_id ) {
+        if (!razorpay_payment_id || !amount || !user_id) {
             return res.status(400).json({ error: "Missing required fields" });
         }
         // console.log("payment success", razorpay_payment_id, amount, user_id, userDetails, cartDetails);
         const [cartDetailsAPI] = await pool.query(`SELECT cart_details FROM users WHERE id = ?`, [user_id]);
-        const cartDetails = JSON.parse(cartDetailsAPI[0].cart_details);
+        let cartDetails = JSON.parse(cartDetailsAPI[0].cart_details);
+        // ===========================
+        // Extract book IDs from cartDetails
+        const bookIds = cartDetails.map(book => book.book_id);
+
+        // Fetch book prices from the database
+        const [bookPrices] = await pool.query(
+            `SELECT id, title, offPrice FROM \`Jeeva-dev\`.book WHERE id IN (?)`,
+            [bookIds]
+        );
+
+        // Create a mapping of book prices
+        const priceMap = {};
+        bookPrices.forEach(book => {
+            priceMap[book.id] = { title: book.title, price: book.offPrice };
+        });
+
+        // Merge price and title into cartDetails
+        cartDetails = cartDetails.map(book => ({
+            ...book,
+            title: priceMap[book.book_id]?.title || "Book Title",
+            price: priceMap[book.book_id]?.price || "0.00"
+        }));
+        // ======================
         console.log("cartDetailsAPI", cartDetails);
         // Extract user details
         const {
@@ -260,6 +283,12 @@ module.exports = (pool, bucket) => {
 
             await pool.query(`UPDATE users SET cart_details = '[]' WHERE id = ?`, [user_id]);
 
+            const signedUrl = await bucket.file("images/jeevaamirdham_logo.png").getSignedUrl({
+                action: "read",
+                expires: Date.now() + 60 * 60 * 1000, // 1-hour expiration
+            });
+            //send order mail
+            await sendOrderEmail(email, firstname, lastname, cartDetails, razorpay_payment_id, full_address, signedUrl[0]);
             // Send success response
             res.status(200).json({ message: "Payment and order details saved successfully" });
         } catch (error) {
@@ -267,6 +296,104 @@ module.exports = (pool, bucket) => {
             res.status(500).json({ error: "An error occurred while processing the payment" });
         }
     });
+
+    async function sendOrderEmail(userEmail, firstname, lastname, cartDetails, transactionId, address, signedUrl) {
+        // Nodemailer setup
+        const transporter = nodemailer.createTransport({
+            host: "smtpout.secureserver.net", // Outgoing SMTP server
+            port: 465, // SSL Port for secure connection
+            secure: true, // Use SSL
+            auth: {
+                user: "admin@jeevaamirdham.org", // Your email
+                pass: "JAmirdham@30", // Your email password,
+            },
+        });
+
+
+        const mailOptions = {
+            from: `"JeevaAmirdham" <admin@jeevaamirdham.org>`,
+            to: userEmail, // Send to the user
+            cc: 'jeevaamirdhamweb@gmail.com', // CC to another email (admin)
+            subject: 'Order Confirmation - Your Purchase was Successful!',
+            html:
+                `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; }
+                .header { text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 8px 8px 0 0; }
+                .logo { max-width: 150px; height: auto; }
+                .content { padding: 25px; }
+                .order-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                .footer { text-align: center; padding: 20px; color: #666; font-size: 14px; }
+                .button { background-color: #007bff; color: white!important; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th { background-color: #f8f9fa; text-align: left; padding: 12px; }
+                td { padding: 12px; border-bottom: 1px solid #e0e0e0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <img src="${signedUrl}" alt="Jeeva Logo" style="max-width: 150px; height: auto;">
+                    <h1 style="color: #2c3e50; margin-top: 15px;">Order Confirmation</h1>
+                </div>
+
+                <div class="content">
+                    <p>Hi ${firstname.charAt(0).toUpperCase() + firstname.slice(1)} ${lastname.charAt(0).toUpperCase() + lastname.slice(1)},</p>
+
+                    <p>Thank you for shopping with us! Your order has been successfully placed.</p>
+                    
+                    <div class="order-details">
+                        <h3 style="margin-top: 0;">Order Summary</h3>
+                        <p><strong>Transaction ID:</strong> #${transactionId}</p>
+                        <p><strong>Shipping Address:</strong><br>${address}</p>
+                        
+                        <h4>Items Ordered</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Book ID</th>
+                                    <th>Title</th>
+                                    <th>Quantity</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${cartDetails.map(book => `
+                                    <tr>
+                                        <td>${book.book_id}</td>
+                                        <td>${book.title || 'Book Title'}</td>
+                                        <td>${book.quantity}</td>
+                                        <td>Rs.${book.price || '00.00'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p style="text-align: center; margin: 25px 0;">
+                        <a href="https://www.jeevaamirdham.org/dashboard?tab=2" class="button">View Order Status</a>
+                    </p>
+
+                    <p>Need help? Reply to this email or contact us at <a href="mailto:jeevaamirdhamweb@gmail.com">jeevaamirdhamweb@gmail.com</a></p>
+                </div>
+
+            </div>
+        </body>
+        </html>
+        `
+        };
+
+        try {
+            await transporter.sendMail(mailOptions);
+            console.log('Order email sent successfully');
+        } catch (error) {
+            console.error('Error sending email:', error);
+        }
+    }
 
 
 

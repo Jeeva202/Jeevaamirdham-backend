@@ -391,7 +391,77 @@ app.get("/getUserOrders", async (req, res) => {
     }
 });
 
+app.get('/getStats', async (req, res) => {
+    try {
+        const [results] = await pool.query(
+        `SELECT 
+        (SELECT SUM(quantity) FROM user_book_sales) AS total_books_sold,
+        (SELECT COUNT(*) FROM users) AS total_users,
+        (SELECT COUNT(*) FROM emagazine) AS total_emagazines`)
+        res.send(results)
+    }
+    catch (err) {
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+})
+// ================Favorite=======================
+app.get("/favorites", async (req, res) => {
+    const { userId } = req.query;
+    console.log("userId", userId);
+    try {
+        const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
 
+        if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+        const favorites = rows[0].favorites ? JSON.parse(rows[0].favorites) : [];
+        console.log("Favorites:", favorites);
+        res.json({ favorites });
+    } catch (error) {
+        console.error("Error fetching favorites:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+app.post("/addFavorites", async (req, res) => {
+    const { userId, bookId } = req.body;
+    console.log("userId from fav", userId, bookId);
+    try {
+        const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
+        if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+        let favorites = rows[0].favorites ? JSON.parse(rows[0].favorites) : [];
+
+        if (!favorites.includes(bookId)) {
+            favorites.push(bookId);
+            await pool.query("UPDATE users SET favorites = ? WHERE id = ?", [JSON.stringify(favorites), userId]);
+        }
+        console.log("Favorites:", favorites);
+        res.json({ message: "Book added to favorites", favorites });
+    } catch (error) {
+        console.error("Error adding to favorites:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+app.post("/deleteFavorites", async (req, res) => {
+    const { userId, bookId } = req.body;
+    try {
+        const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
+        console.log(rows);
+        if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+        let favorites = rows[0].favorites ? JSON.parse(rows[0].favorites) : [];
+
+        favorites = favorites.filter(id => id !== bookId); // Remove book from list
+
+        await pool.query("UPDATE users SET favorites = ? WHERE id = ?", [JSON.stringify(favorites), userId]);
+
+        res.json({ message: "Book removed from favorites", favorites });
+    } catch (error) {
+        console.error("Error removing from favorites:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
 
 
 pool.getConnection().then(
