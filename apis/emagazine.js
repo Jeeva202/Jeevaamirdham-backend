@@ -1,6 +1,6 @@
 const router = require('express').Router()
 require('dotenv').config()
-
+const axios = require('axios')
 
 module.exports = (pool, bucket) => {
     router.get('/image_check', async (req,res)=>{
@@ -507,7 +507,54 @@ WHERE year = ? AND month = ?;`;
             res.status(500).send({ error: err.message });
         }
     });
+    router.post('/create-order', async (req, res) => {
+        const { amount, user_id, planName } = req.body;
     
+        if (!amount || !user_id || !planName) {
+            return res.status(400).json({ error: "Missing required fields" });
+        }
+    
+        try {
+            // Razorpay API credentials
+            const key_id = process.env.RAZORPAY_KEY_ID;
+            const secret_key = process.env.RAZORPAY_SECRET_KEY;
+    
+            // Create the Razorpay order here
+            const options = {
+                amount: amount * 100, // Amount in paise
+                currency: "INR",
+                receipt: `order_rcptid_${new Date().getTime()}`,
+                notes: {
+                    user_id: user_id,
+                    plan_name: planName,
+                },
+            };
+            console.log("keys", key_id, secret_key);
+            
+            // Basic authentication using key_id and secret_key
+            const auth = Buffer.from(`${key_id}:${secret_key}`).toString('base64');
+            console.log("auth", auth);
+            
+            // Create Razorpay order via API
+            const response = await axios.post(
+                'https://api.razorpay.com/v1/orders',
+                options,
+                {
+                    headers: {
+                        'Authorization': `Basic ${auth}`,
+                    }
+                }
+            );
+    
+            const orderId = response.data.id;
+    
+            // Send the order ID to the frontend
+            res.status(200).json({ orderId });
+        } catch (error) {
+            console.error("Error creating Razorpay order:", error);
+            res.status(500).json({ error: "An error occurred while creating the Razorpay order" });
+        }
+    });
     
     router.post("/payment-success", async (req, res) => {
         const { razorpay_payment_id, plan, amount, user_id } = req.body;
@@ -546,10 +593,18 @@ WHERE year = ? AND month = ?;`;
           );
             if(purchaseType === 'upgrade'){
                 console.log("inside upgrade");
-                
-                await pool.query(
-                    "UPDATE users set plan = ? where id=?", [plan, user_id]
-                  )
+                let [existingPlan] = await pool.query(`select plan from users where id = ?`,[user_id])
+                if(existingPlan[0].plan === 'basic'){
+                    await pool.query(
+                        "UPDATE users set expiry_dt = DATE_ADD(CURDATE(), INTERVAL 11 MONTH), plan = ? where id=?", [plan, user_id]
+                      )
+                }
+                else{
+                    await pool.query(
+                        "UPDATE users set plan = ? where id=?", [plan, user_id]
+                      )
+                }
+
             }
             else{
                 await pool.query(

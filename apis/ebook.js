@@ -1,6 +1,7 @@
 const router = require('express').Router()
 const AWS = require('aws-sdk')
 require('dotenv').config()
+const axios = require('axios');
 const nodemailer = require('nodemailer');
 
 module.exports = (pool, bucket) => {
@@ -200,7 +201,51 @@ module.exports = (pool, bucket) => {
     //         res.status(500).json({ message: "Internal server error" });
     //     }
     // })
-
+    router.post('/create-order', async (req, res) => {
+        const { amount, user_id } = req.body;
+    
+        if (!amount || !user_id) {
+            return res.status(400).json({ error: "Missing required fields" });
+        }
+    
+        try {
+            // Razorpay API credentials
+            const key_id = process.env.RAZORPAY_KEY_ID;
+            const secret_key = process.env.RAZORPAY_SECRET_KEY;
+    
+            // Create the Razorpay order here
+            const options = {
+                amount: amount * 100, // Amount in paise
+                currency: "INR",
+                receipt: `order_rcptid_${new Date().getTime()}`,
+                notes: {
+                    user_id: user_id,
+                },
+            };
+    
+            // Basic authentication using key_id and secret_key
+            const auth = Buffer.from(`${key_id}:${secret_key}`).toString('base64');
+    
+            // Create Razorpay order via API
+            const response = await axios.post(
+                'https://api.razorpay.com/v1/orders',
+                options,
+                {
+                    headers: {
+                        'Authorization': `Basic ${auth}`,
+                    }
+                }
+            );
+    
+            const orderId = response.data.id;
+    
+            // Send the order ID to the frontend
+            res.status(200).json({ orderId });
+        } catch (error) {
+            console.error("Error creating Razorpay order:", error);
+            res.status(500).json({ error: "An error occurred while creating the Razorpay order" });
+        }
+    });
     router.post('/payment-success', async (req, res) => {
         const { razorpay_payment_id, amount, user_id, userDetails } = req.body;
 
