@@ -463,6 +463,21 @@ app.post("/deleteFavorites", async (req, res) => {
     }
 });
 
+app.get("/account-expiry", async (req, res)=>{
+    try{
+        const {uid} = req.params;
+        const [results] = await pool.query('select id from users where id = ? and expiry_dt > ?', [uid, new Date().toISOString().slice(0, 10)]);
+        if(results.length > 0){
+            res.json({isUserActive: true});
+        }else{
+            res.json({isUserActive: false});
+        }
+    }
+    catch (error) {
+        console.error("Error removing from favorites:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+})
 
 pool.getConnection().then(
     () => {

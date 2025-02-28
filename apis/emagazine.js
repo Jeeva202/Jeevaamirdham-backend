@@ -2,6 +2,25 @@ const router = require('express').Router()
 require('dotenv').config()
 const axios = require('axios')
 
+async function updateLastRead (req, res, next){
+    try{
+        const {uid, year, month} = req.query;
+        const [lastread] = await pool.query("select last_read from users where id = ?", [uid]);
+
+        if(lastread.last_read == null || lastread.last_read == '[]'){
+            await pool.query("update users set last_read = ? where id = ?", [JSON.stringify([{ year:year, month:month}]), uid])
+        }
+        else{
+            let lastReadArray = JSON.parse(lastread.last_read);
+            lastReadArray.unshift({year:year, month:month})
+            await pool.query("update users set last_read = ? where id = ?", [JSON.stringify(lastReadArray.slice(0,2)), uid])
+
+        }
+    }
+    catch(err){
+        console.log(err);
+    }
+}
 module.exports = (pool, bucket) => {
     router.get('/image_check', async (req,res)=>{
         try{
@@ -409,11 +428,11 @@ WHERE year = ? AND month = ?;`;
     // });
     
     
-    router.get('/audiofile', async (req, res) => {
+    router.get('/audiofile', updateLastRead, async (req, res) => {
         try {
             const today = new Date().toISOString().slice(0, 10);
             const { uid, year, month } = req.query;
-    
+            
             // Fetch the user's plan
             const plan_query = `
                 SELECT 
