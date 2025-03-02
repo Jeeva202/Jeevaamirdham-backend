@@ -3,6 +3,9 @@ const AWS = require('aws-sdk')
 require('dotenv').config()
 const axios = require('axios');
 const nodemailer = require('nodemailer');
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const path = require("path");
 
 module.exports = (pool, bucket) => {
     router.post("/add_to_cart", async (req, res) => {
@@ -11,7 +14,7 @@ module.exports = (pool, bucket) => {
         let getquery = `SELECT cart_details FROM \`Jeeva-dev\`.users WHERE id = ?`;
         const [get_cart] = await pool.query(getquery, [userId]);
 
-        let cart_details = get_cart[0]["cart_details"];
+        let cart_details = get_cart[0]?.["cart_details"];
 
         if (cart_details) {
             let data = JSON.parse(cart_details);
@@ -203,16 +206,16 @@ module.exports = (pool, bucket) => {
     // })
     router.post('/create-order', async (req, res) => {
         const { amount, user_id } = req.body;
-    
+
         if (!amount || !user_id) {
             return res.status(400).json({ error: "Missing required fields" });
         }
-    
+
         try {
             // Razorpay API credentials
             const key_id = process.env.RAZORPAY_KEY_ID;
             const secret_key = process.env.RAZORPAY_SECRET_KEY;
-    
+
             // Create the Razorpay order here
             const options = {
                 amount: amount * 100, // Amount in paise
@@ -222,10 +225,10 @@ module.exports = (pool, bucket) => {
                     user_id: user_id,
                 },
             };
-    
+
             // Basic authentication using key_id and secret_key
             const auth = Buffer.from(`${key_id}:${secret_key}`).toString('base64');
-    
+
             // Create Razorpay order via API
             const response = await axios.post(
                 'https://api.razorpay.com/v1/orders',
@@ -236,9 +239,9 @@ module.exports = (pool, bucket) => {
                     }
                 }
             );
-    
+
             const orderId = response.data.id;
-    
+
             // Send the order ID to the frontend
             res.status(200).json({ orderId });
         } catch (error) {
@@ -333,7 +336,7 @@ module.exports = (pool, bucket) => {
                 expires: Date.now() + 60 * 60 * 1000, // 1-hour expiration
             });
             //send order mail
-            await sendOrderEmail(email, firstname, lastname, cartDetails, razorpay_payment_id, full_address, signedUrl[0]);
+            await sendOrderEmail(email, firstname, lastname, cartDetails, razorpay_payment_id, full_address, signedUrl[0], phone);
             // Send success response
             res.status(200).json({ message: "Payment and order details saved successfully" });
         } catch (error) {
@@ -342,7 +345,7 @@ module.exports = (pool, bucket) => {
         }
     });
 
-    async function sendOrderEmail(userEmail, firstname, lastname, cartDetails, transactionId, address, signedUrl) {
+    async function sendOrderEmail(userEmail, firstname, lastname, cartDetails, transactionId, address, signedUrl, phone) {
         // Nodemailer setup
         const transporter = nodemailer.createTransport({
             host: "smtpout.secureserver.net", // Outgoing SMTP server
@@ -354,6 +357,9 @@ module.exports = (pool, bucket) => {
             },
         });
 
+        // Generate PDF invoice
+        const pdfPath = path.join(__dirname, `invoice_${transactionId}.pdf`);
+        await generateInvoicePDF(pdfPath, firstname, lastname, cartDetails, transactionId, address, phone);
 
         const mailOptions = {
             from: `"JeevaAmirdham" <admin@jeevaamirdham.org>`,
@@ -383,7 +389,7 @@ module.exports = (pool, bucket) => {
             <div class="container">
                 <div class="header">
                     <img src="${signedUrl}" alt="Jeeva Logo" style="max-width: 150px; height: auto;">
-                    <h1 style="color: #2c3e50; margin-top: 15px;">Order Confirmation</h1>
+                    <h1 style="color: #2c3e50; margin-top: 15px;">Invoice</h1>
                 </div>
 
                 <div class="content">
@@ -393,8 +399,9 @@ module.exports = (pool, bucket) => {
                     
                     <div class="order-details">
                         <h3 style="margin-top: 0;">Order Summary</h3>
-                        <p><strong>Transaction ID:</strong> #${transactionId}</p>
+                        <p><strong>Name:</strong> ${firstname.charAt(0).toUpperCase() + firstname.slice(1)} ${lastname.charAt(0).toUpperCase() + lastname.slice(1)}</p>
                         <p><strong>Shipping Address:</strong><br>${address}</p>
+                        <p><strong>Phone:</strong><br>${phone}</p>
                         
                         <h4>Items Ordered</h4>
                         <table>
@@ -423,21 +430,64 @@ module.exports = (pool, bucket) => {
                         <a href="https://www.jeevaamirdham.org/dashboard?tab=2" class="button">View Order Status</a>
                     </p>
 
-                    <p>Need help? Reply to this email or contact us at <a href="mailto:jeevaamirdhamweb@gmail.com">jeevaamirdhamweb@gmail.com</a></p>
+                    <p>Need help? Reply to this email or contact us at <a href="mailto:admin@jeevaamirdham.org">admin@jeevaamirdham.org</a></p>
                 </div>
 
             </div>
         </body>
         </html>
-        `
+        `,
+            attachments: [
+                {
+                    filename: `invoice_${transactionId}.pdf`,
+                    path: pdfPath,
+                    contentType: "application/pdf",
+                },
+            ],
         };
 
         try {
             await transporter.sendMail(mailOptions);
+            // Delete the file after sending the email
+            fs.unlinkSync(pdfPath);
             console.log('Order email sent successfully');
         } catch (error) {
             console.error('Error sending email:', error);
         }
+
+
+    }
+    // Function to generate invoice PDF
+    async function generateInvoicePDF(filePath, firstname, lastname, cartDetails, transactionId, address, phone) {
+        return new Promise((resolve, reject) => {
+            const doc = new PDFDocument();
+            const stream = fs.createWriteStream(filePath);
+
+            doc.pipe(stream);
+
+            doc.fontSize(20).text("JeevaAmirdham Order Invoice", { align: "center" });
+            doc.moveDown();
+
+            doc.fontSize(14).text(`Transaction ID: ${transactionId}`);
+            doc.text(`Customer: ${firstname} ${lastname}`);
+            doc.text(`Phone: ${phone}`);
+            doc.text(`Shipping Address: ${address}`);
+            doc.moveDown();
+
+            doc.fontSize(16).text("Items Ordered:");
+            doc.moveDown();
+
+            cartDetails.forEach((book, index) => {
+                doc.fontSize(12).text(`${index + 1}. ${book.title || "Book Title"} (Book ID: ${book.book_id})`);
+                doc.text(`   Quantity: ${book.quantity}`);
+                doc.text(`   Price: Rs.${book.price || "00.00"}`);
+                doc.moveDown();
+            });
+
+            doc.end();
+            stream.on("finish", resolve);
+            stream.on("error", reject);
+        });
     }
 
 

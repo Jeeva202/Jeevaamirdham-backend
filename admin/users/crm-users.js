@@ -209,5 +209,35 @@ VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
         }
     });
     
+    router.get("/book-orders", async (req, res) => {
+        try {
+            // Ensure you're comparing sub_to with today's date
+            const query = 'SELECT * FROM user_book_sales';
+
+            // Execute the query
+            const [results] = await pool.query(query);
+
+            // Send back the results
+            res.send(results);
+        } catch (err) {
+            console.error("Error fetching CRM users:", err);
+            res.sendStatus(500).send("Internal Error");
+        }
+    });
+
+    router.put('/book-orders/:id', async (req, res) => {
+        const { id } = req.params;
+        const { status } = req.body;
+    
+        try {
+            await pool.query("UPDATE user_book_sales SET status = ? WHERE id = ?", [status, id]);
+            res.json({ success: true, message: "Order status updated successfully" });
+        } catch (error) {
+            console.error("Error updating order status:", error);
+            res.status(500).json({ success: false, message: "Failed to update status" });
+        }
+    });
+    
+
     return router;
 };

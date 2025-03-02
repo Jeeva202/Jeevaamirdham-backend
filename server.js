@@ -484,7 +484,8 @@ pool.getConnection().then(
         app.use('/emagazine-page', require('./apis/emagazine')(pool, bucket));
         app.use('/ebooks', require('./apis/ebook')(pool, bucket));
         app.use('/audio-video-page', require('./apis/audio_video_page')(pool, bucket));
-        app.use('/admin/users/crm/', require("./admin/users/crm-users")(pool, bucket) )
+        app.use('/admin/users/crm/', require("./admin/users/crm-users")(pool, bucket) );
+        // app.use('/admin', require("./admin/admin-login")(pool, bucket) );
         const loginRouter = require('./apis/login')(pool, bucket); // Import the login router
         app.use('/login', loginRouter); // Use the login router
         app.listen(port, () => { console.log("connected to database : " + port) })
