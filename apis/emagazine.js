@@ -284,7 +284,6 @@ WHERE year = ? AND month = ?;`;
     
             // Execute the query using pool.query
             const [rows] = await pool.query(query, [userId, planName, planName, userId, userId, userId, planName]);
-            console.log("purchase_type", rows);
             
             // If no rows are returned, planName is invalid
             if (rows.length === 0) {
@@ -454,7 +453,6 @@ WHERE year = ? AND month = ?;`;
     
             // Parse the audio JSON content
             const audioContent = JSON.parse(results[0]["audio"]);
-            console.log(audioContent);
     
             const signedResults = await Promise.all(audioContent.map(async (e, i) => {
                 // Check if the file exists in Google Cloud Storage
@@ -548,11 +546,9 @@ WHERE year = ? AND month = ?;`;
                     plan_name: planName,
                 },
             };
-            console.log("keys", key_id, secret_key);
             
             // Basic authentication using key_id and secret_key
             const auth = Buffer.from(`${key_id}:${secret_key}`).toString('base64');
-            console.log("auth", auth);
             
             // Create Razorpay order via API
             const response = await axios.post(
@@ -579,14 +575,12 @@ WHERE year = ? AND month = ?;`;
         const { razorpay_payment_id, plan, amount, user_id } = req.body;
       
         try {
-            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id);
             const today = new Date().toISOString().slice(0, 10);
           // Save payment details to the database
           await pool.query(
             "INSERT INTO user_magazine_sales (transac_id, plan, amount, u_id, status, purchase_dt) VALUES (?, ?, ?, ?, ?, ?)",
             [razorpay_payment_id, plan, amount, user_id, "completed", today] // Use user ID from session or token
           );
-          console.log("plan", plan, "u_id", user_id);
           
           await pool.query(
             "UPDATE users SET plan = ?,expiry_dt = DATE_ADD(CURDATE(), INTERVAL 11 MONTH) WHERE id=?", [plan, user_id]
@@ -603,7 +597,6 @@ WHERE year = ? AND month = ?;`;
         const { razorpay_payment_id, plan, amount, user_id, purchaseType } = req.body;
       
         try {
-            console.log("razor_pay", razorpay_payment_id, plan, amount, user_id, purchaseType);
             const today = new Date().toISOString().slice(0, 10);
                       // Save payment details to the database
           await pool.query(
@@ -611,7 +604,6 @@ WHERE year = ? AND month = ?;`;
             [razorpay_payment_id, plan, amount, user_id, "completed", today] // Use user ID from session or token
           );
             if(purchaseType === 'upgrade'){
-                console.log("inside upgrade");
                 let [existingPlan] = await pool.query(`select plan from users where id = ?`,[user_id])
                 if(existingPlan[0].plan === 'basic'){
                     await pool.query(
@@ -629,11 +621,7 @@ WHERE year = ? AND month = ?;`;
                 await pool.query(
                     "UPDATE `Jeeva-dev`.users set expiry_dt = DATE_ADD(expiry_dt, INTERVAL 11 MONTH) where id=?", [user_id]
                 )
-            }
-
-
-          console.log("");
-          
+            }          
 
       
           res.status(200).json({ message: "Subscription updated successfully" });

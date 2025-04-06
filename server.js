@@ -26,15 +26,11 @@ const bucketName = process.env.BUCKET;
 const bucket = storage.bucket(bucketName)
 
 app.post('/check-user', async (req, res) => {
-    console.log(req.body);
 
     const { email } = req.body;
 
-    console.log(email);
-
     try {
         const user = await pool.query(`select id, username from \`Jeeva-dev\`.users where email = ?`, [email]);
-        console.log("user", user);
         if (user[0].length != 0) {
             return res.json({ userExists: true, id: user[0][0].id });
         } else {
@@ -48,7 +44,6 @@ app.post('/check-user', async (req, res) => {
 app.post('/create-user', async (req, res) => {
     try {
         const { name, email, ph, plan, googleId, facebookId } = req.body;
-        console.log(name, email, ph, plan, googleId, facebookId);
 
         if (!email && !ph && !googleId && !facebookId) {
             return res.status(400).send({ error: 'At least one login method (email, phone, googleId, facebookId) is required' });
@@ -59,7 +54,6 @@ app.post('/create-user', async (req, res) => {
         // Generate a new custom ID
         const [lastUser] = await pool.query('SELECT id FROM `Jeeva-dev`.users ORDER BY id DESC LIMIT 1');
         let newId;
-        console.log(lastUser);
 
         if (lastUser.length === 0) {
             newId = 1;
@@ -96,7 +90,23 @@ app.get('/getPlan', async (req, res) => {
                         where id =? and expiry_dt > ?`
 
         const [results] = await pool.query(query, [req.query.id, today])
+        console.log("results",results);
+        
+        res.send(results)
+    }
+    catch (err) {
+        res.status(500).send({ error: 'Internal Server Error', details: err.message });
+    }
+})
+app.get('/getPlanEvenItisExpired', async (req, res) => {
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+        const query = `SELECT plan, case when expiry_dt < ? then "expired" else "not expired" end as is_expired FROM users
+                        where id =? `
 
+        const [results] = await pool.query(query, [today,req.query.id])
+        console.log("results",results);
+        
         res.send(results)
     }
     catch (err) {
@@ -161,32 +171,72 @@ app.get('/blogs', async (req, res) => {
 app.get('/todays-thoughts', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
-        console.log(today, new Date())
+        
+        // Get today's thoughts
         const [todayThoughts] = await pool.query(
             'SELECT * FROM todaysThoughts WHERE date = ? ORDER BY id LIMIT 3',
             [today]
         );
 
-        if (todayThoughts.length > 0) {
-            console.log('Fetched thoughts:', todayThoughts);
-            return res.json(todayThoughts);
+        // Process today's thoughts - return all with audioUrl (null if no audiofile)
+        const processedTodayThoughts = await Promise.all(
+            todayThoughts.map(async (thought) => {
+                if (!thought.audiofile) {
+                    return { ...thought, audioUrl: null };
+                }
+                
+                try {
+                    const signedUrl = await bucket.file(thought.audiofile).getSignedUrl({
+                        action: 'read',
+                        expires: Date.now() + 60 * 60 * 1000
+                    });
+                    return { ...thought, audioUrl: signedUrl[0] };
+                } catch (error) {
+                    console.error(`Error generating signed URL for ${thought.audiofile}:`, error);
+                    return { ...thought, audioUrl: null };
+                }
+            })
+        );
+
+        if (processedTodayThoughts.length > 0) {
+            return res.json(processedTodayThoughts);
         }
 
+        // If no today's thoughts, get random thoughts
         const [randomThoughts] = await pool.query(
             'SELECT * FROM todaysThoughts ORDER BY RAND() LIMIT 3'
         );
-        console.log('random thoughts:', randomThoughts);
-        res.json(randomThoughts);
+
+        // Process random thoughts - return all with audioUrl (null if no audiofile)
+        const processedRandomThoughts = await Promise.all(
+            randomThoughts.map(async (thought) => {
+                if (!thought.audiofile) {
+                    return { ...thought, audioUrl: null };
+                }
+                
+                try {
+                    const signedUrl = await bucket.file(thought.audiofile).getSignedUrl({
+                        action: 'read',
+                        expires: Date.now() + 60 * 60 * 1000
+                    });
+                    return { ...thought, audioUrl: signedUrl[0] };
+                } catch (error) {
+                    console.error(`Error generating signed URL for ${thought.audiofile}:`, error);
+                    return { ...thought, audioUrl: null };
+                }
+            })
+        );
+        
+        res.json(processedRandomThoughts);
+        
     } catch (err) {
         console.error('Error fetching thoughts:', err);
         res.status(500).json({ error: 'Failed to fetch thoughts' });
     }
 });
-
 app.get('/getUserDetails', async (req, res) => {
     try {
         const { userId } = req.query;
-        console.log("userId", userId);
 
         const [results] = await pool.query('SELECT f_name as firstName, l_name as lastName, gender, dob, phone_number as phone, email, door_no as doorNo, street_name as streetName, city, state, country, zip as zipCode FROM users WHERE id = ?', [userId]);
         res.send(results);
@@ -212,7 +262,6 @@ app.post('/updateUserDetails', async (req, res) => {
             country,
             zipCode,
         } = req.body; // Get the data sent from the client
-        console.log("body", req.body);
 
         // SQL query to update user details
         const updateQuery = `
@@ -269,7 +318,6 @@ app.post("/subscribe", async (req, res) => {
     try {
         // Check if user exists
         const [result] = await pool.query('SELECT sub_newsletter FROM users WHERE id = ?', [userId]);
-        console.log(result[0].sub_newsletter)
 
         if (result[0].sub_newsletter == 1) {
             return res.status(400).json({ message: 'User is already subscribed' });
@@ -292,7 +340,6 @@ app.post("/un-subscribe", async (req, res) => {
     try {
         // Check if user exists
         const [result] = await pool.query('SELECT sub_newsletter FROM users WHERE id = ?', [userId]);
-        console.log(result[0].sub_newsletter)
 
         if (result[0].sub_newsletter == 0) {
             return res.status(400).json({ message: 'User is already Unsubscribed' });
@@ -407,14 +454,12 @@ app.get('/getStats', async (req, res) => {
 // ================Favorite=======================
 app.get("/favorites", async (req, res) => {
     const { userId } = req.query;
-    console.log("userId", userId);
     try {
         const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
 
         if (rows.length === 0) return res.status(404).json({ error: "User not found" });
 
         const favorites = rows[0].favorites ? JSON.parse(rows[0].favorites) : [];
-        console.log("Favorites:", favorites);
         res.json({ favorites });
     } catch (error) {
         console.error("Error fetching favorites:", error);
@@ -424,7 +469,6 @@ app.get("/favorites", async (req, res) => {
 
 app.post("/addFavorites", async (req, res) => {
     const { userId, bookId } = req.body;
-    console.log("userId from fav", userId, bookId);
     try {
         const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
         if (rows.length === 0) return res.status(404).json({ error: "User not found" });
@@ -435,7 +479,6 @@ app.post("/addFavorites", async (req, res) => {
             favorites.push(bookId);
             await pool.query("UPDATE users SET favorites = ? WHERE id = ?", [JSON.stringify(favorites), userId]);
         }
-        console.log("Favorites:", favorites);
         res.json({ message: "Book added to favorites", favorites });
     } catch (error) {
         console.error("Error adding to favorites:", error);
@@ -447,7 +490,6 @@ app.post("/deleteFavorites", async (req, res) => {
     const { userId, bookId } = req.body;
     try {
         const [rows] = await pool.query("SELECT favorites FROM users WHERE id = ?", [userId]);
-        console.log(rows);
         if (rows.length === 0) return res.status(404).json({ error: "User not found" });
 
         let favorites = rows[0].favorites ? JSON.parse(rows[0].favorites) : [];

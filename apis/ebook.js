@@ -30,7 +30,6 @@ module.exports = (pool, bucket) => {
 
             const string_data = JSON.stringify(data);
             await pool.query(`UPDATE \`Jeeva-dev\`.users SET cart_details = ? WHERE id = ?`, [string_data, userId]);
-            console.log("data", data);
 
             res.json({
                 "message": "Updated cart",
@@ -53,7 +52,6 @@ module.exports = (pool, bucket) => {
 
     router.post("/remove_from_cart", async (req, res) => {
         const { userId, book_id } = req.body;
-        console.log("api got called");
 
         // Get current cart details for the user
         let getQuery = `SELECT cart_details FROM \`Jeeva-dev\`.users WHERE id = ?`;
@@ -63,14 +61,11 @@ module.exports = (pool, bucket) => {
 
         if (cartDetails) {
             let data = JSON.parse(cartDetails); // Parse the string into an array
-            console.log("data before removing item", data);
 
             // Remove the item from the cart array
             data = data.filter(item => {
-                console.log(`Checking: item.book_id = ${item.book_id}, book_id = ${book_id}`);
                 return item.book_id !== parseInt(book_id);
             });
-            console.log("data after removing item", data);
             // Convert the updated array back to a JSON string
             const updatedCart = JSON.stringify(data);
 
@@ -89,12 +84,10 @@ module.exports = (pool, bucket) => {
 
     router.get('/books', async (req, res) => {
         try {
-            console.log("Inside books API");
 
             // Query to fetch the books
             const query = `SELECT id, title, subtitle, shortdesc, orgPrice, discount, offPrice, img FROM \`Jeeva-dev\`.book`;
             const [results] = await pool.query(query);
-            console.log(results);
             // Map over the results to generate signed URLs for the images
             const signedResults = await Promise.all(results.map(async (book) => {
                 const signedUrl = await bucket.file(book.img).getSignedUrl({
@@ -116,7 +109,6 @@ module.exports = (pool, bucket) => {
 
     router.get('/book-info', async (req, res) => {
         try {
-            console.log("book-info called");
 
             const query = `
                 SELECT id, availability, author, title, shortdesc, offPrice, img, description 
@@ -281,12 +273,10 @@ module.exports = (pool, bucket) => {
             price: priceMap[book.book_id]?.price || "0.00"
         }));
         // ======================
-        console.log("cartDetailsAPI", cartDetails);
         // Extract user details
         const {
             firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes
         } = userDetails;
-        console.log("details", firstname, lastname, company, country, state, street, street2, city, zipcode, phone, email, notes);
 
         // Create a full address string
         const full_address = `${street} ${street2 ? street2 + ', ' : ''}${city}, ${state}, ${country}, ${zipcode}`;

@@ -33,7 +33,6 @@ module.exports = (pool, bucket) => {
         try {
             const query = 'SELECT * FROM audio';
             const [result] = await pool.query(query);
-            console.log("check",result)
 
             const audioDataList = await Promise.all(result.map(async (audioData) => {
                 const signedUrl_audiofile = await bucket.file(audioData.audiofile).getSignedUrl({
@@ -97,7 +96,6 @@ module.exports = (pool, bucket) => {
         try {
             const query = 'SELECT * FROM video';
             const [result] = await pool.query(query);
-            console.log("check",result)
             const videoDataList = await Promise.all(result.map(async (videoData) => {
                 const signedUrl_videofile = await bucket.file(videoData.videofile).getSignedUrl({
                     action: 'read',

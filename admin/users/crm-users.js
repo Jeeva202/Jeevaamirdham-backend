@@ -76,7 +76,6 @@ VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
         try {
             const updatedData = req.body; 
     
-            console.log(updatedData);
     
             // Construct the SQL query to update the member details
             const query = `
@@ -237,7 +236,93 @@ VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
             res.status(500).json({ success: false, message: "Failed to update status" });
         }
     });
+    router.post('/book-orders/add', async (req, res) => {
+        const {
+            transaction_id,
+            book_id,
+            quantity,
+            user_id,
+            firstname,
+            lastname,
+            company,
+            country,
+            state,
+            street,
+            street2,
+            city,
+            zipcode,
+            phone,
+            email,
+            notes,
+            // full_address,
+            status,
+            created_at, 
+            updated_at  
+        } = req.body;
+        const full_address = `${street} ${street2 ? street2 + ', ' : ''}${city}, ${state}, ${country}, ${zipcode}`;
+        try {
+            // Insert the new order into the database
+            const result = await pool.query(
+                `INSERT INTO user_book_sales (
+                    transaction_id,
+                    book_id,
+                    quantity,
+                    user_id,
+                    firstname,
+                    lastname,
+                    company,
+                    country,
+                    state,
+                    street,
+                    street2,
+                    city,
+                    zipcode,
+                    phone,
+                    email,
+                    notes,
+                    full_address,
+                    status,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    transaction_id,
+                    book_id,
+                    quantity,
+                    user_id,
+                    firstname,
+                    lastname,
+                    company,
+                    country,
+                    state,
+                    street,
+                    street2,
+                    city,
+                    zipcode,
+                    phone,
+                    email,
+                    notes,
+                    full_address,
+                    status,
+                    created_at,  // Using the date from form
+                    updated_at   // Using the date from form
+                ]
+            );
     
+            res.json({ 
+                success: true, 
+                message: "Order added successfully",
+                // orderId: result.insertId
+            });
+        } catch (error) {
+            console.error("Error adding new order:", error);
+            res.status(500).json({ 
+                success: false, 
+                message: "Failed to add new order",
+                error: error.message
+            });
+        }
+    });
 
     return router;
 };
