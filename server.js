@@ -507,7 +507,7 @@ app.post("/deleteFavorites", async (req, res) => {
 
 app.get("/account-expiry", async (req, res)=>{
     try{
-        const {uid} = req.params;
+        const {uid} = req.query;
         const [results] = await pool.query('select id from users where id = ? and expiry_dt > ?', [uid, new Date().toISOString().slice(0, 10)]);
         if(results.length > 0){
             res.json({isUserActive: true});

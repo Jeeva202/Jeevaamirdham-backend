@@ -2,26 +2,29 @@ const router = require('express').Router()
 require('dotenv').config()
 const axios = require('axios')
 
-async function updateLastRead (req, res, next){
-    try{
-        const {uid, year, month} = req.query;
-        const [lastread] = await pool.query("select last_read from users where id = ?", [uid]);
+function createUpdateLastReadMiddleware(pool) {
+    return async function updateLastRead(req, res, next) {
+        try {
+            const {uid, year, month} = req.query;
+            const [lastread] = await pool.query("select last_read from users where id = ?", [uid]);
 
-        if(lastread.last_read == null || lastread.last_read == '[]'){
-            await pool.query("update users set last_read = ? where id = ?", [JSON.stringify([{ year:year, month:month}]), uid])
+            if(lastread.last_read == null || lastread.last_read == '[]') {
+                await pool.query("update users set last_read = ? where id = ?", [JSON.stringify([{ year:year, month:month}]), uid]);
+            } else {
+                let lastReadArray = JSON.parse(lastread.last_read);
+                lastReadArray.unshift({year:year, month:month});
+                await pool.query("update users set last_read = ? where id = ?", [JSON.stringify(lastReadArray.slice(0,2)), uid]);
+            }
+            next(); // Call next() to continue to the next middleware/route handler
+        } catch(err) {
+            console.log(err);
+            next(err); // Pass error to Express error handler
         }
-        else{
-            let lastReadArray = JSON.parse(lastread.last_read);
-            lastReadArray.unshift({year:year, month:month})
-            await pool.query("update users set last_read = ? where id = ?", [JSON.stringify(lastReadArray.slice(0,2)), uid])
-
-        }
-    }
-    catch(err){
-        console.log(err);
-    }
+    };
 }
+
 module.exports = (pool, bucket) => {
+    const updateLastRead = createUpdateLastReadMiddleware(pool);
     router.get('/image_check', async (req,res)=>{
         try{
                 // console.log("API called");
