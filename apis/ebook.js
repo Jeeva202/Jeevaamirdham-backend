@@ -207,7 +207,6 @@ module.exports = (pool, bucket) => {
             // Razorpay API credentials
             const key_id = process.env.RAZORPAY_KEY_ID;
             const secret_key = process.env.RAZORPAY_SECRET_KEY;
-
             // Create the Razorpay order here
             const options = {
                 amount: amount * 100, // Amount in paise
@@ -217,6 +216,8 @@ module.exports = (pool, bucket) => {
                     user_id: user_id,
                 },
             };
+            console.log("auth", key_id, secret_key);
+
 
             // Basic authentication using key_id and secret_key
             const auth = Buffer.from(`${key_id}:${secret_key}`).toString('base64');

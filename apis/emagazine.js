@@ -6,25 +6,102 @@ function createUpdateLastReadMiddleware(pool) {
     return async function updateLastRead(req, res, next) {
         try {
             const {uid, year, month} = req.query;
-            const [lastread] = await pool.query("select last_read from users where id = ?", [uid]);
+            const [lastread] = await pool.query("SELECT last_read FROM users WHERE id = ?", [uid]);
 
-            if(lastread.last_read == null || lastread.last_read == '[]') {
-                await pool.query("update users set last_read = ? where id = ?", [JSON.stringify([{ year:year, month:month}]), uid]);
-            } else {
-                let lastReadArray = JSON.parse(lastread.last_read);
-                lastReadArray.unshift({year:year, month:month});
-                await pool.query("update users set last_read = ? where id = ?", [JSON.stringify(lastReadArray.slice(0,2)), uid]);
+            const newEntry = { year: year, month: month };
+            let lastReadArray = [];
+
+            // Parse existing array if it exists
+            if (lastread[0].last_read && lastread[0].last_read !== '[]') {
+                lastReadArray = JSON.parse(lastread[0].last_read);
             }
-            next(); // Call next() to continue to the next middleware/route handler
+
+            // Check if entry already exists
+            const existingIndex = lastReadArray.findIndex(entry => 
+                entry.year === year && entry.month === month
+            );
+
+            if (existingIndex !== -1) {
+                // If exists, remove it from current position
+                lastReadArray.splice(existingIndex, 1);
+            }
+
+            // Add new entry at beginning (most recent)
+            lastReadArray.unshift(newEntry);
+
+            // If array length exceeds 3, remove the oldest entry
+            if (lastReadArray.length > 3) {
+                lastReadArray = lastReadArray.slice(0, 3);
+            }
+
+            await pool.query("UPDATE users SET last_read = ? WHERE id = ?", 
+                [JSON.stringify(lastReadArray), uid]);
+            
+            next();
         } catch(err) {
-            console.log(err);
-            next(err); // Pass error to Express error handler
+            console.error("Error updating last read:", err);
+            next(err);
         }
     };
 }
 
 module.exports = (pool, bucket) => {
     const updateLastRead = createUpdateLastReadMiddleware(pool);
+    router.get('/get-last-read', async (req, res) => {
+        try {
+            const { uid } = req.query;
+            
+            // 1. Get the last_read array from users table
+            const [lastread] = await pool.query("SELECT last_read FROM users WHERE id = ?", [uid]);
+            
+            if (!lastread[0]?.last_read || lastread[0].last_read === '[]') {
+                return res.send([]);
+            }
+    
+            const lastReadArray = JSON.parse(lastread[0].last_read);
+            
+            // 2. For each last read entry, fetch magazine details
+            const magazineDetails = await Promise.all(
+                lastReadArray.map(async ({year, month}) => {
+                    try {
+                        // Get basic magazine info
+                        const [magazine] = await pool.query(`
+                            SELECT title, shortDesc, img 
+                            FROM emagazine 
+                            WHERE year = ? AND month = ?`, 
+                            [year, month]);
+                        
+                        if (!magazine[0]) return null;
+                        
+                        // Get signed URL for the image
+                        const file = bucket.file(magazine[0].img);
+                        const [signedUrl] = await file.getSignedUrl({
+                            action: 'read',
+                            expires: Date.now() + 360 * 60 * 1000  // 6 hour expiration
+                        });
+                        
+                        return {
+                            year,
+                            month,
+                            title: magazine[0].title,
+                            shortDesc: magazine[0].shortDesc,
+                            imgUrl: signedUrl
+                        };
+                    } catch (err) {
+                        console.error(`Error fetching details for ${year}-${month}:`, err);
+                        return null;
+                    }
+                })
+            );
+            
+            // 3. Filter out any failed requests and send response
+            res.send(magazineDetails.filter(detail => detail !== null));
+            
+        } catch (err) {
+            console.error("Error in get-last-read:", err);
+            res.status(500).send({ error: err.message });
+        }
+    });
     router.get('/image_check', async (req,res)=>{
         try{
                 // console.log("API called");
