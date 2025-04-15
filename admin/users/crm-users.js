@@ -61,10 +61,10 @@ module.exports = (pool, bucket) => {
 
     router.post("/add-member", async (req, res)=>{
         try{
-            const {name, mobile, email, street, district, pincode, sub_from, sub_to } = req.body
-            let query = `INSERT INTO crm_users (name, mobile, email, street, district, pincode, sub_from, sub_to, book, type )
-VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
-            const [results] = await pool.query(query, [name, mobile, email, street, district, pincode, sub_from, sub_to ])
+            const {name, mobile, email, street, state, district, pincode, sub_from, sub_to } = req.body
+            let query = `INSERT INTO crm_users (name, mobile, email, street, state, district, pincode, sub_from, sub_to, book, type )
+VALUES (?, ?, ?,?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
+            const [results] = await pool.query(query, [name, mobile, email, street,state, district, pincode, sub_from, sub_to ])
             res.json(results)
         }
         catch (err) {
@@ -83,6 +83,7 @@ VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
                 SET 
                     name = ?, 
                     street = ?, 
+                    state = ?,
                     district = ?, 
                     pincode = ?, 
                     mobile = ?, 
@@ -98,6 +99,7 @@ VALUES (?, ?, ?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
             const [results] = await pool.query(query, [
                 updatedData.name || '',
                 updatedData.street || '',
+                updatedData.state || '',
                 updatedData.district || '',
                 updatedData.pincode || '',
                 updatedData.mobile || '',
