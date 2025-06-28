@@ -86,7 +86,7 @@ module.exports = (pool, bucket) => {
         try {
 
             // Query to fetch the books
-            const query = `SELECT id, title, subtitle, shortdesc, orgPrice, discount, offPrice, img FROM \`Jeeva-dev\`.book`;
+            const query = `SELECT * FROM \`Jeeva-dev\`.book`;
             const [results] = await pool.query(query);
             // Map over the results to generate signed URLs for the images
             const signedResults = await Promise.all(results.map(async (book) => {

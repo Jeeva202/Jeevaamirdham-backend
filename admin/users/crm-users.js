@@ -238,6 +238,62 @@ VALUES (?, ?, ?,?,?, ?, ?, ?, ?,'jeeva amirtham', 1);`
             res.status(500).json({ success: false, message: "Failed to update status" });
         }
     });
+    // New endpoint for editing orders
+    router.put('/book-orders/edit/:id', async (req, res) => {
+    const { id } = req.params;
+    const orderData = req.body;
+
+    try {
+        // Update all order fields
+        await pool.query(
+            `UPDATE user_book_sales SET 
+                transaction_id = ?,
+                book_id = ?,
+                quantity = ?,
+                user_id = ?,
+                firstname = ?,
+                lastname = ?,
+                company = ?,
+                country = ?,
+                state = ?,
+                street = ?,
+                street2 = ?,
+                city = ?,
+                zipcode = ?,
+                phone = ?,
+                email = ?,
+                notes = ?,
+                status = ?,
+                updated_at = NOW()
+             WHERE id = ?`,
+            [
+                orderData.transaction_id,
+                orderData.book_id,
+                orderData.quantity,
+                orderData.user_id,
+                orderData.firstname,
+                orderData.lastname,
+                orderData.company,
+                orderData.country,
+                orderData.state,
+                orderData.street,
+                orderData.street2,
+                orderData.city,
+                orderData.zipcode,
+                orderData.phone,
+                orderData.email,
+                orderData.notes,
+                orderData.status,
+                id
+            ]
+        );
+
+        res.json({ success: true, message: "Order updated successfully" });
+    } catch (error) {
+        console.error("Error updating order:", error);
+        res.status(500).json({ success: false, message: "Failed to update order" });
+    }
+    });
     router.post('/book-orders/add', async (req, res) => {
         const {
             transaction_id,
