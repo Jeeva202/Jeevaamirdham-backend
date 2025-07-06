@@ -527,10 +527,12 @@ pool.getConnection().then(
         app.use('/ebooks', require('./apis/ebook')(pool, bucket));
         app.use('/audio-video-page', require('./apis/audio_video_page')(pool, bucket));
         app.use('/admin/users/crm/', require("./admin/users/crm-users")(pool, bucket) );
+        app.use('/admin/users/', require("./admin/users/users")(pool, bucket) );
         app.use('/admin/auth', require("./admin/auth/authenticate")(pool) );
         app.use('/admin/magazine', require("./admin/products/emagazine")(pool, bucket))
         app.use('/admin/thoughts', require("./admin/products/todayThoughts")(pool, bucket))
         app.use('/admin/blogs', require("./admin/products/blogs")(pool, bucket))
+        app.use('/admin/videos', require("./admin/products/video")(pool, bucket))
         app.use('/admin/books', require("./admin/products/books")(pool, bucket))
         // app.use('/admin', require("./admin/admin-login")(pool, bucket) );
         const loginRouter = require('./apis/login')(pool, bucket); // Import the login router

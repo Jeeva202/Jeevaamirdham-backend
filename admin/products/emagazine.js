@@ -7,7 +7,7 @@ const path = require('path');
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 30 * 1024 * 1024, // 30MB limit for each file
+        fileSize: 100 * 1024 * 1024, // 30MB limit for each file
     }
 });
 const monthToTamil = {
