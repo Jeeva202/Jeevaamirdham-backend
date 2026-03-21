@@ -90,8 +90,8 @@ app.get('/getPlan', async (req, res) => {
                         where id =? and expiry_dt > ?`
 
         const [results] = await pool.query(query, [req.query.id, today])
-        console.log("results",results);
-        
+        console.log("results", results);
+
         res.send(results)
     }
     catch (err) {
@@ -104,9 +104,9 @@ app.get('/getPlanEvenItisExpired', async (req, res) => {
         const query = `SELECT plan, case when expiry_dt < ? then "expired" else "not expired" end as is_expired FROM users
                         where id =? `
 
-        const [results] = await pool.query(query, [today,req.query.id])
-        console.log("results",results);
-        
+        const [results] = await pool.query(query, [today, req.query.id])
+        console.log("results", results);
+
         res.send(results)
     }
     catch (err) {
@@ -171,7 +171,7 @@ app.get('/blogs', async (req, res) => {
 app.get('/todays-thoughts', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
-        
+
         // Get today's thoughts
         const [todayThoughts] = await pool.query(
             'SELECT * FROM todaysThoughts WHERE date = ? ORDER BY id LIMIT 3',
@@ -184,7 +184,7 @@ app.get('/todays-thoughts', async (req, res) => {
                 if (!thought.audiofile) {
                     return { ...thought, audioUrl: null };
                 }
-                
+
                 try {
                     const signedUrl = await bucket.file(thought.audiofile).getSignedUrl({
                         action: 'read',
@@ -213,7 +213,7 @@ app.get('/todays-thoughts', async (req, res) => {
                 if (!thought.audiofile) {
                     return { ...thought, audioUrl: null };
                 }
-                
+
                 try {
                     const signedUrl = await bucket.file(thought.audiofile).getSignedUrl({
                         action: 'read',
@@ -226,9 +226,9 @@ app.get('/todays-thoughts', async (req, res) => {
                 }
             })
         );
-        
+
         res.json(processedRandomThoughts);
-        
+
     } catch (err) {
         console.error('Error fetching thoughts:', err);
         res.status(500).json({ error: 'Failed to fetch thoughts' });
@@ -441,7 +441,7 @@ app.get("/getUserOrders", async (req, res) => {
 app.get('/getStats', async (req, res) => {
     try {
         const [results] = await pool.query(
-        `SELECT 
+            `SELECT 
         (SELECT SUM(quantity) FROM user_book_sales) AS total_books_sold,
         (SELECT COUNT(*) FROM users) AS total_users,
         (SELECT COUNT(*) FROM emagazine) AS total_emagazines`)
@@ -505,14 +505,14 @@ app.post("/deleteFavorites", async (req, res) => {
     }
 });
 
-app.get("/account-expiry", async (req, res)=>{
-    try{
-        const {uid} = req.query;
+app.get("/account-expiry", async (req, res) => {
+    try {
+        const { uid } = req.query;
         const [results] = await pool.query('select id from users where id = ? and expiry_dt > ?', [uid, new Date().toISOString().slice(0, 10)]);
-        if(results.length > 0){
-            res.json({isUserActive: true});
-        }else{
-            res.json({isUserActive: false});
+        if (results.length > 0) {
+            res.json({ isUserActive: true });
+        } else {
+            res.json({ isUserActive: false });
         }
     }
     catch (error) {
@@ -526,8 +526,10 @@ pool.getConnection().then(
         app.use('/emagazine-page', require('./apis/emagazine')(pool, bucket));
         app.use('/ebooks', require('./apis/ebook')(pool, bucket));
         app.use('/audio-video-page', require('./apis/audio_video_page')(pool, bucket));
-        app.use('/admin/users/crm/', require("./admin/users/crm-users")(pool, bucket) );
-        app.use('/admin/auth', require("./admin/auth/authenticate")(pool) );
+        app.use('/newsletter', require('./apis/newsletter')(pool, bucket));
+        app.use('/admin/users/crm/', require("./admin/users/crm-users")(pool, bucket));
+        app.use('/admin/auth', require("./admin/auth/authenticate")(pool));
+        app.use('/admin/thoughts', require("./admin/products/todayThoughts")(pool, bucket));
         // app.use('/admin', require("./admin/admin-login")(pool, bucket) );
         const loginRouter = require('./apis/login')(pool, bucket); // Import the login router
         app.use('/login', loginRouter); // Use the login router
